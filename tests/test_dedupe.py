@@ -335,3 +335,15 @@ def test_cli_include_apps_flag(env, capsys):
     env.cfg = config.load(env.paths)
     cli.main(["scan", "--only", "F2", "--include-apps"], paths=env.paths, engine=env.engine())
     assert "[承認待ち] 重複ファイル (同一ドライブ内): 1 件" in capsys.readouterr().out
+
+
+def test_dot_folders_are_app_data(env):
+    home = env.paths.home
+    internal = home / ".lmstudio" / ".internal" / "bundled-models" / "m.gguf"
+    bundled = home / ".lmstudio" / "apps" / "bionic" / ".internal" / "bundled-models" / "m.gguf"
+    write(internal, blob(150))
+    write(bundled, blob(150))
+    assert collect(env)[0] == []  # 既定では中を調べない
+    cands, _ = collect(env, scan_app_folders=True)
+    assert len(cands) == 1 and cands[0].approval
+    assert "アプリのデータフォルダ (.lmstudio)" in cands[0].reason

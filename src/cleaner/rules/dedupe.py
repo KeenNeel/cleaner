@@ -234,6 +234,9 @@ def _scan(ctx: DedupeContext, drive: Drive, min_size: int) -> Iterator[FileInfo]
                 restricted = "Git リポジトリ"
             elif app_file:
                 restricted = f"アプリのフォルダ ({app_file})"
+            elif current.name.startswith(".") and current != drive.root:
+                # .lmstudio や .cache など、アプリが設定・モデル等を置くフォルダ
+                restricted = f"アプリのデータフォルダ ({current.name})"
             if restricted and not include_restricted:
                 _log_skip(drive, current, restricted)
                 continue
