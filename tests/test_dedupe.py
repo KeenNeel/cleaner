@@ -260,3 +260,19 @@ def test_feature_only_review_allows_feature_only_run(env):
     third = env.engine().run(dry_run=False)
     assert [a.kind for a in third.actions] == ["would_quarantine"]
     assert old_tmp.exists()
+
+
+def test_exe_in_drive_root_or_users_does_not_hide_drive(env):
+    write(env.c.root / "installer.exe", b"MZ")
+    write(env.c.root / "Users" / "tool.exe", b"MZ")
+    write(env.paths.home / "Documents" / "a.bin", blob(83))
+    dup = write(env.paths.home / "Videos" / "old" / "a.bin", blob(83))
+    cands, _ = collect(env)
+    assert [c.path for c in cands] == [dup]
+
+
+def test_skipped_folders_are_logged(env, caplog):
+    write(env.c.root / "Tools" / "app.dll", b"MZ")
+    with caplog.at_level("INFO", logger="cleaner.rules.dedupe"):
+        collect(env)
+    assert "Tools を飛ばしました: アプリのフォルダ (app.dll)" in caplog.text

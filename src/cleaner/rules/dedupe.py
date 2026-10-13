@@ -205,21 +205,28 @@ def _user_folders(paths: AppPaths) -> list[Path]:
 
 def _scan(ctx: DedupeContext, drive: Drive, min_size: int) -> Iterator[FileInfo]:
     """ドライブ内のファイルを列挙する。保護フォルダ・Git リポジトリ・アプリのフォルダには入らない。"""
-    # 散らかりやすく、インストーラ (.exe) が置かれていてもアプリのフォルダとはみなさない場所
-    loose_dirs = {norm(p) for p in _user_folders(ctx.paths)}
+    # .exe が置かれていてもアプリのフォルダとはみなさない場所: ドライブ直下、ホームまでの途中のフォルダ
+    # (C:\Users 等)、散らかりやすいユーザーフォルダ
+    home = ctx.paths.home
+    loose_dirs = {norm(p) for p in (drive.root, *home.parents, *_user_folders(ctx.paths))}
     other_roots = {norm(d.root) for d in ctx.drives if d.volume_id != drive.volume_id}
     stack = [drive.root]
     while stack:
         current = stack.pop()
         try:
             entries = list(os.scandir(longpath(current)))
-        except OSError:
+        except OSError as e:
+            _log_skip(drive, current, f"開けません ({e.strerror})")
             continue
         names = [e.name.lower() for e in entries]
         if ".git" in names:
+            _log_skip(drive, current, "Git リポジトリ")
             continue
-        if norm(current) not in loose_dirs and any(os.path.splitext(n)[1] in APP_EXTENSIONS for n in names):
-            continue
+        if norm(current) not in loose_dirs:
+            app_file = next((n for n in names if os.path.splitext(n)[1] in APP_EXTENSIONS), None)
+            if app_file:
+                _log_skip(drive, current, f"アプリのフォルダ ({app_file})")
+                continue
         for entry in entries:
             path = current / entry.name
             try:
@@ -235,6 +242,16 @@ def _scan(ctx: DedupeContext, drive: Drive, min_size: int) -> Iterator[FileInfo]
                 if path.suffix.lower() in PARTIAL_DOWNLOAD_SUFFIXES or is_cloud_only(st):
                     continue
                 yield FileInfo(path, st.st_size, st.st_mtime_ns, drive)
+
+
+def _log_skip(drive: Drive, folder: Path, reason: str) -> None:
+    """浅い階層のフォルダを飛ばしたときだけ記録する (-v で表示。深い階層はきりがないので省略)。"""
+    try:
+        depth = len(folder.relative_to(drive.root).parts)
+    except ValueError:
+        depth = 0
+    if depth <= 3:
+        log.info("重複検出: %s を飛ばしました: %s", folder, reason)
 
 
 def _drop_hardlinks(files: list[FileInfo]) -> list[FileInfo]:
