@@ -44,7 +44,9 @@ DEFAULTS: dict[str, Any] = {
     },
     "dedupe": {
         "min_size_kb": 1,  # これより小さいファイルは重複を探さない
-        "cross_drive": "report",  # ドライブをまたぐ重複: report (承認待ち) / quarantine (自動隔離)
+        "cross_drive": "report",
+        # Git リポジトリ・アプリのフォルダの中も調べる (見つかった重複は承認待ちにするだけで、自動では隔離しない)
+        "scan_app_folders": False,  # ドライブをまたぐ重複: report (承認待ち) / quarantine (自動隔離)
         # 重複のうち残す 1 つを選ぶ優先順 ("*" はそれ以外のすべての場所)
         "keep_priority": ["~\\Documents", "~\\Pictures", "~\\Videos", "~\\Music", "*",
                           "~\\Desktop", "~\\Downloads"],

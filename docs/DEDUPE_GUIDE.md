@@ -58,6 +58,16 @@ cleaner scan --drive C: --only F2 --min-size 100MB
 (同じ順位ならパスが浅い方、さらに同じなら作成日時が古い方)。
 Windows 本体・Program Files・AppData・Git リポジトリ・アプリのフォルダ・OneDrive のクラウドのみのファイルは対象外です。
 
+### もっと広く調べたいとき
+
+- 小さいファイルも調べる: `--min-size 10MB` や `--min-size 1MB` にします (時間がかかります)。
+- Git リポジトリやアプリのフォルダ (`pinokio` など) の中も調べる: `--include-apps` を付けます。
+  ここで見つかった重複は、消すとアプリが動かなくなることがあるので **承認待ちとして表示するだけ** で、自動では隔離しません。
+
+```
+python -m cleaner scan --drive C: --only F2 --min-size 10MB --include-apps
+```
+
 ## 手順 4. 自動整理を有効にする
 
 手順 3 の内容に問題がなければ、有効にします。

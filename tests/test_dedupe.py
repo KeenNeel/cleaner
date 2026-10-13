@@ -303,3 +303,35 @@ def test_folder_copies_in_many_places_are_reported_once(env):
     assert f"すべて {blobs[0] / '28'}" in folders[lone_28].reason
     assert sum(c.size for c in folders.values()) == 2 * 4 * 4096 + 2 * 4096
     assert [c for c in cands if c.category != "duplicate_folder"] == []
+
+
+def test_include_apps_reports_but_never_auto_quarantines(env):
+    home = env.paths.home
+    write(home / "ACE-Step" / ".git" / "HEAD", b"ref")
+    repo_model = write(home / "ACE-Step" / "models" / "model.bin", blob(130))
+    write(home / "pinokio" / "app.exe", b"MZ")
+    app_model = write(home / "pinokio" / "cache" / "model.bin", blob(130))
+    desk = write(home / "Desktop" / "model.bin", blob(130))
+    write(home / "Documents" / "a.bin", blob(131))
+    plain = write(home / "Desktop" / "a.bin", blob(131))
+
+    assert [c.path for c in collect(env)[0]] == [plain]  # 既定では中を調べない
+
+    cands, skipped = collect(env, scan_app_folders=True)
+    result = {c.path: c.approval for c in cands}
+    assert result[plain] is False
+    # model.bin の 3 つのうち 2 つが候補になり、どれも承認待ち
+    model_cands = {p for p in result if p.name == "model.bin"}
+    assert len(model_cands) == 2 and model_cands <= {repo_model, app_model, desk}
+    assert all(result[p] is True for p in model_cands)
+    assert all("自動では隔離しません" in c.reason for c in cands if c.path in model_cands)
+    assert skipped == []
+
+
+def test_cli_include_apps_flag(env, capsys):
+    write(env.paths.home / "tool" / "x.dll", b"MZ")
+    write(env.paths.home / "tool" / "big.bin", blob(140))
+    write(env.paths.home / "Desktop" / "big.bin", blob(140))
+    env.cfg = config.load(env.paths)
+    cli.main(["scan", "--only", "F2", "--include-apps"], paths=env.paths, engine=env.engine())
+    assert "[承認待ち] 重複ファイル (同一ドライブ内): 1 件" in capsys.readouterr().out

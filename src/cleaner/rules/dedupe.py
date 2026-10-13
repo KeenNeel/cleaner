@@ -61,6 +61,8 @@ class FileInfo:
     mtime_ns: int
     drive: Drive
     birthtime: float = 0.0
+    # Git リポジトリ・アプリのフォルダ内 (scan_app_folders で調べたもの)。承認待ちにしかしない
+    restricted: str | None = None
 
 
 @dataclass
@@ -204,28 +206,36 @@ def _user_folders(paths: AppPaths) -> list[Path]:
 
 
 def _scan(ctx: DedupeContext, drive: Drive, min_size: int) -> Iterator[FileInfo]:
-    """ドライブ内のファイルを列挙する。保護フォルダ・Git リポジトリ・アプリのフォルダには入らない。"""
+    """ドライブ内のファイルを列挙する。保護フォルダには入らない。
+
+    Git リポジトリ・アプリのフォルダは、scan_app_folders が有効なら中も調べて restricted を付け、
+    無効なら入らない。
+    """
+    include_restricted = ctx.cfg["dedupe"]["scan_app_folders"]
     # .exe が置かれていてもアプリのフォルダとはみなさない場所: ドライブ直下、ホームまでの途中のフォルダ
     # (C:\Users 等)、散らかりやすいユーザーフォルダ
     home = ctx.paths.home
     loose_dirs = {norm(p) for p in (drive.root, *home.parents, *_user_folders(ctx.paths))}
     other_roots = {norm(d.root) for d in ctx.drives if d.volume_id != drive.volume_id}
-    stack = [drive.root]
+    stack: list[tuple[Path, str | None]] = [(drive.root, None)]
     while stack:
-        current = stack.pop()
+        current, restricted = stack.pop()
         try:
             entries = list(os.scandir(longpath(current)))
         except OSError as e:
             _log_skip(drive, current, f"開けません ({e.strerror})")
             continue
-        names = [e.name.lower() for e in entries]
-        if ".git" in names:
-            _log_skip(drive, current, "Git リポジトリ")
-            continue
-        if norm(current) not in loose_dirs:
-            app_file = next((n for n in names if os.path.splitext(n)[1] in APP_EXTENSIONS), None)
-            if app_file:
-                _log_skip(drive, current, f"アプリのフォルダ ({app_file})")
+        if restricted is None:
+            names = [e.name.lower() for e in entries]
+            app_file = None
+            if norm(current) not in loose_dirs:
+                app_file = next((n for n in names if os.path.splitext(n)[1] in APP_EXTENSIONS), None)
+            if ".git" in names:
+                restricted = "Git リポジトリ"
+            elif app_file:
+                restricted = f"アプリのフォルダ ({app_file})"
+            if restricted and not include_restricted:
+                _log_skip(drive, current, restricted)
                 continue
         for entry in entries:
             path = current / entry.name
@@ -237,11 +247,11 @@ def _scan(ctx: DedupeContext, drive: Drive, min_size: int) -> Iterator[FileInfo]
                 continue
             if stat.S_ISDIR(st.st_mode):
                 if norm(path) not in other_roots and not ctx.protector.is_excluded_dir(path):
-                    stack.append(path)
+                    stack.append((path, restricted))
             elif stat.S_ISREG(st.st_mode) and st.st_size >= min_size:
                 if path.suffix.lower() in PARTIAL_DOWNLOAD_SUFFIXES or is_cloud_only(st):
                     continue
-                yield FileInfo(path, st.st_size, st.st_mtime_ns, drive)
+                yield FileInfo(path, st.st_size, st.st_mtime_ns, drive, restricted=restricted)
 
 
 def _log_skip(drive: Drive, folder: Path, reason: str) -> None:
@@ -448,7 +458,7 @@ def collect(ctx: DedupeContext) -> Iterator[Result]:
     for group in find_groups(ctx, files):
         members = []
         for f in group:
-            reason = ctx.protector.check(f.path, newest_mtime=f.mtime_ns / 1e9)
+            reason = ctx.protector.check(f.path, newest_mtime=f.mtime_ns / 1e9, allow_git=bool(f.restricted))
             if reason:
                 yield Skipped(f.path, "duplicate", reason)
             else:
@@ -500,13 +510,16 @@ def collect(ctx: DedupeContext) -> Iterator[Result]:
         if not (_unchanged(d.dup) and _unchanged(d.keep)):
             log.info("走査後に変更されたためスキップ: %s", d.dup.path)
             continue
+        # Git リポジトリ・アプリのフォルダが絡む重複は、消すとアプリが動かなくなりうるので承認待ち
+        restricted = d.dup.restricted or d.keep.restricted
+        note = f" ※{restricted}内のため自動では隔離しません" if restricted else ""
         yield Candidate(
             path=d.dup.path,
             feature=FEATURE,
             category="duplicate_cross_drive" if d.cross_drive else "duplicate",
-            reason=f"{d.keep.path} と同じ内容 ({human_size(d.dup.size)})",
+            reason=f"{d.keep.path} と同じ内容 ({human_size(d.dup.size)}){note}",
             size=d.dup.size,
-            approval=d.cross_drive and c["cross_drive"] == "report",
+            approval=bool(restricted) or (d.cross_drive and c["cross_drive"] == "report"),
         )
 
 
