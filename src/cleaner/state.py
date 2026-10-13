@@ -44,12 +44,22 @@ class State:
         entry["last_seen"] = now.isoformat(timespec="seconds")
         return is_new
 
-    def is_reviewed(self, volume_id: str) -> bool:
-        """このドライブについてドライラン (確認用レポート) を 1 回以上実施済みか。"""
-        return bool(self.data["drives"].get(volume_id, {}).get("reviewed"))
+    def is_reviewed(self, volume_id: str, features: list[str] | None = None) -> bool:
+        """このドライブについてドライラン (確認用レポート) を 1 回以上実施済みか。
 
-    def mark_reviewed(self, volume_id: str) -> None:
-        self.data["drives"].setdefault(volume_id, {})["reviewed"] = True
+        features を指定すると、その機能だけのドライランでも確認済みとみなす。
+        """
+        entry = self.data["drives"].get(volume_id, {})
+        if entry.get("reviewed"):
+            return True
+        return features is not None and set(features) <= set(entry.get("reviewed_features", []))
+
+    def mark_reviewed(self, volume_id: str, features: list[str] | None = None) -> None:
+        entry = self.data["drives"].setdefault(volume_id, {})
+        if features is None:
+            entry["reviewed"] = True
+        else:
+            entry["reviewed_features"] = sorted({*entry.get("reviewed_features", []), *features})
 
     def known_drives(self) -> dict[str, dict[str, Any]]:
         return self.data["drives"]

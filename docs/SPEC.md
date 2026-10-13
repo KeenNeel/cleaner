@@ -96,7 +96,7 @@ Windows PC のディスクを定期的・自動的に整理するツール。
 
 ### F2. 重複ファイル検出
 - 対象: **全ドライブの全フォルダ** (3.2 の保護対象を除く)。
-- 手順: サイズで絞る → 先頭/末尾 64KB のハッシュ → 全体ハッシュ (BLAKE3) で確定。ハッシュは `%LOCALAPPDATA%\cleaner\hashcache.db` にキャッシュし、サイズ・更新日時が変わっていないファイルは再計算しない。
+- 手順: サイズで絞る → 先頭/末尾 64KB のハッシュ → 全体ハッシュ (BLAKE2b。外部ライブラリを増やさないため標準ライブラリのものを使う) で確定。ハッシュは `%LOCALAPPDATA%\cleaner\hashcache.db` にキャッシュし、サイズ・更新日時が変わっていないファイルは再計算しない。
 - 対象外: 1KB 未満、ハードリンク同士、保護パス内、アプリのインストールフォルダ内 (exe/dll と同居するファイル)。
 - **残す 1 つの選び方** (優先順): ① 設定 `keep_priority` に指定したフォルダ内 (既定: `ドキュメント` > `ピクチャ` > `ビデオ` > `ミュージック` > その他 > `デスクトップ` > `ダウンロード`) → ② パスが浅い → ③ 作成日時が古い。
 - 自動隔離の範囲:
@@ -274,8 +274,7 @@ browser_cache = true
 dev_caches = false
 
 [dedupe]
-scope = "all"              # 全フォルダ
-min_size_kb = 1
+min_size_kb = 1            # CLI の --min-size 100MB で一時的に変更可
 cross_drive = "report"     # report / quarantine
 keep_priority = ['~\Documents', '~\Pictures', '~\Videos', '~\Music', '*', '~\Desktop', '~\Downloads']
 
@@ -337,3 +336,4 @@ old_installers = { enabled = true, auto_quarantine = false }
 | 2026-10-11 | AI | Claude API を使用 (API キーはユーザーが用意) |
 | 2026-10-11 | iPhone バックアップ | 端末ごとに最新 1 件を残す |
 | 2026-10-11 | UI | 設定画面とタスクトレイアイコンを用意 |
+| 2026-10-13 | 重複のハッシュ | BLAKE3 ではなく標準ライブラリの BLAKE2b を使う |

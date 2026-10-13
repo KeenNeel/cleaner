@@ -15,10 +15,12 @@ from cleaner.appdirs import AppPaths, default_paths
 from cleaner.engine import Engine, ItemRef, RunReport
 from cleaner.fsutil import human_size
 from cleaner.lock import AlreadyRunning
-from cleaner.rules.cleanup import CATEGORY_LABELS
+from cleaner.rules import cleanup, dedupe
 from cleaner.state import State
 
 EXIT_OK, EXIT_ERROR, EXIT_USAGE, EXIT_BUSY = 0, 1, 2, 3
+
+CATEGORY_LABELS = {**cleanup.CATEGORY_LABELS, **dedupe.CATEGORY_LABELS}
 
 KIND_LABELS = {
     "quarantined": "隔離",
@@ -27,6 +29,7 @@ KIND_LABELS = {
     "would_quarantine": "隔離予定",
     "would_delete": "即時削除予定",
     "would_purge": "本削除予定",
+    "needs_approval": "承認待ち",
     "error": "エラー",
 }
 
@@ -46,11 +49,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-v", "--verbose", action="store_true", help="詳細を表示する")
     sub = p.add_subparsers(dest="command", required=True, metavar="コマンド")
 
-    sub.add_parser("scan", help="ドライラン (何も変更せず、整理候補を表示する)")
-
+    scan = sub.add_parser("scan", help="ドライラン (何も変更せず、整理候補を表示する)")
     run = sub.add_parser("run", help="整理を実行する")
     run.add_argument("--dry-run", action="store_true", help="何も変更しない")
-    run.add_argument("--drive", help="このドライブだけを対象にする (例: D: またはボリュームID)")
+    for sp in (scan, run):
+        sp.add_argument("--drive", help="このドライブだけを対象にする (例: C: またはボリュームID)")
+        sp.add_argument("--only", type=_features, metavar="機能",
+                        help="この機能だけを実行する (例: F2 / F1,F2)")
+        sp.add_argument("--min-size", type=_size, metavar="サイズ",
+                        help="重複を探すファイルの最小サイズ (例: 100MB, 1GB)")
 
     lst = sub.add_parser("list", help="隔離ボックスの中身を表示する")
     lst.add_argument("--all", action="store_true", help="復元済み・本削除済みの履歴も表示する")
@@ -77,6 +84,28 @@ def _date(value: str) -> datetime:
         return datetime.strptime(value, "%Y-%m-%d")
     except ValueError:
         raise argparse.ArgumentTypeError("日付は YYYY-MM-DD 形式で指定してください") from None
+
+
+def _features(value: str) -> list[str]:
+    features = [f.strip().upper() for f in value.split(",") if f.strip()]
+    unknown = [f for f in features if f not in config.ALL_FEATURES]
+    if not features or unknown:
+        raise argparse.ArgumentTypeError(f"機能は {', '.join(config.ALL_FEATURES)} から指定してください")
+    return features
+
+
+_SIZE_UNITS = {"KB": 1, "MB": 1024, "GB": 1024**2, "TB": 1024**3}
+
+
+def _size(value: str) -> int:
+    """'100MB' などを KB 単位の整数にする。"""
+    m = re.fullmatch(r"(\d+(?:\.\d+)?)\s*([KMGT]B)", value.strip().upper())
+    if not m:
+        raise argparse.ArgumentTypeError("サイズは 100MB や 1GB のように単位を付けて指定してください")
+    kb = int(float(m.group(1)) * _SIZE_UNITS[m.group(2)])
+    if kb < 1:
+        raise argparse.ArgumentTypeError("サイズは 1KB 以上で指定してください")
+    return kb
 
 
 def _days(value: str) -> int:
@@ -119,10 +148,11 @@ def main(argv: list[str] | None = None, *, paths: AppPaths | None = None, engine
             return cmd_toggle(paths, args.command == "enable")
         cfg = config.load(paths)
         engine = engine or Engine(paths, cfg)
-        if args.command == "scan":
-            return cmd_run(engine, dry_run=True, drive=None, verbose=args.verbose)
-        if args.command == "run":
-            return cmd_run(engine, dry_run=args.dry_run, drive=args.drive, verbose=args.verbose)
+        if args.command in ("scan", "run"):
+            if args.min_size is not None:
+                engine.cfg["dedupe"]["min_size_kb"] = args.min_size
+            dry_run = args.command == "scan" or args.dry_run
+            return cmd_run(engine, dry_run=dry_run, drive=args.drive, features=args.only, verbose=args.verbose)
         if args.command == "list":
             return cmd_list(engine, show_all=args.all)
         if args.command == "restore":
@@ -153,8 +183,9 @@ def cmd_toggle(paths: AppPaths, enabled: bool) -> int:
     return EXIT_OK
 
 
-def cmd_run(engine: Engine, *, dry_run: bool, drive: str | None, verbose: bool) -> int:
-    report = engine.run(dry_run=dry_run, drive_filter=drive)
+def cmd_run(engine: Engine, *, dry_run: bool, drive: str | None, features: list[str] | None,
+            verbose: bool) -> int:
+    report = engine.run(dry_run=dry_run, drive_filter=drive, features=features)
     print_report(report, verbose=verbose)
     return EXIT_ERROR if report.errors else EXIT_OK
 
@@ -198,6 +229,10 @@ def print_report(report: RunReport, *, verbose: bool) -> None:
         if verbose:
             for p in report.protected:
                 print(f"  - {p['path']}: {p['reason']}")
+    approval = report.by_kind("needs_approval")
+    if approval:
+        print(f"承認待ち: {len(approval)} 件 / {human_size(sum(a.size for a in approval))} "
+              "(自動では隔離しません。内容を確認して手動で整理してください)")
     if report.errors:
         print(f"エラー: {len(report.errors)} 件 (詳細はログを参照)")
     if report.dry_run:

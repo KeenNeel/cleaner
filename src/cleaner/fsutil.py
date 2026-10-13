@@ -15,6 +15,12 @@ from cleaner import winapi
 _FILE_ATTRIBUTE_HIDDEN = 0x2
 _FILE_ATTRIBUTE_SYSTEM = 0x4
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+_FILE_ATTRIBUTE_OFFLINE = 0x1000
+_FILE_ATTRIBUTE_RECALL_ON_OPEN = 0x40000
+_FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS = 0x400000
+_CLOUD_ONLY_ATTRIBUTES = (
+    _FILE_ATTRIBUTE_OFFLINE | _FILE_ATTRIBUTE_RECALL_ON_OPEN | _FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS
+)
 
 # 隔離時にハッシュを取るファイルサイズの上限 (これより大きいファイルは時間がかかるので省略)
 HASH_LIMIT = 512 * 1024 * 1024
@@ -49,6 +55,11 @@ def is_link(st: os.stat_result) -> bool:
 def is_system_hidden(st: os.stat_result) -> bool:
     attrs = getattr(st, "st_file_attributes", 0)
     return bool(attrs & _FILE_ATTRIBUTE_HIDDEN) and bool(attrs & _FILE_ATTRIBUTE_SYSTEM)
+
+
+def is_cloud_only(st: os.stat_result) -> bool:
+    """OneDrive 等の「クラウドのみ」ファイルなら True (中身を読むとダウンロードが始まる)。"""
+    return bool(getattr(st, "st_file_attributes", 0) & _CLOUD_ONLY_ATTRIBUTES)
 
 
 @dataclass
@@ -126,11 +137,11 @@ def remove_path(path: Path) -> None:
             os.unlink(lp)
 
 
-def file_hash(path: Path) -> str | None:
-    """BLAKE2b ハッシュ (16進)。フォルダや大きすぎるファイルは None。"""
+def file_hash(path: Path, limit: int | None = HASH_LIMIT) -> str | None:
+    """BLAKE2b ハッシュ (16進)。フォルダや limit より大きいファイルは None (limit=None なら上限なし)。"""
     try:
         st = os.lstat(longpath(path))
-        if not stat.S_ISREG(st.st_mode) or st.st_size > HASH_LIMIT:
+        if not stat.S_ISREG(st.st_mode) or (limit is not None and st.st_size > limit):
             return None
         h = hashlib.blake2b(digest_size=20)
         with open(longpath(path), "rb") as f:

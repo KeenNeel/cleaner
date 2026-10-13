@@ -1,6 +1,6 @@
 """整理処理の全体の流れ (仕様 7 章の処理順) と、隔離項目の復元・本削除。
 
-現在の実装範囲 (フェーズ 1): 期限切れ隔離の本削除 → F1 不要ファイル削除。
+現在の実装範囲: 期限切れ隔離の本削除 → F1 不要ファイル削除 → F2 重複ファイル検出。
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from cleaner.lock import RunLock
 from cleaner.models import Candidate, Skipped
 from cleaner.protect import Protector
 from cleaner.quarantine import QuarantineError, QuarantineItem, QuarantineStore, read_manifest
-from cleaner.rules import cleanup
+from cleaner.rules import cleanup, dedupe
 from cleaner.state import State
 
 log = logging.getLogger(__name__)
@@ -32,7 +32,8 @@ KEEP_RUN_REPORTS = 12
 
 @dataclass
 class Action:
-    kind: str  # quarantined / deleted / purged / would_quarantine / would_delete / would_purge / skipped / error
+    # quarantined / deleted / purged / would_quarantine / would_delete / would_purge / needs_approval / error
+    kind: str
     path: str
     feature: str
     category: str
@@ -111,11 +112,13 @@ class Engine:
 
     # ---- 整理の実行 ----
 
-    def run(self, *, dry_run: bool, drive_filter: str | None = None) -> RunReport:
+    def run(self, *, dry_run: bool, drive_filter: str | None = None,
+            features: list[str] | None = None) -> RunReport:
+        """features を指定すると、その機能だけを実行する (例: ["F2"])。"""
         with RunLock(self.paths.lock_file):
-            return self._run(dry_run=dry_run, drive_filter=drive_filter)
+            return self._run(dry_run=dry_run, drive_filter=drive_filter, features=features)
 
-    def _run(self, *, dry_run: bool, drive_filter: str | None) -> RunReport:
+    def _run(self, *, dry_run: bool, drive_filter: str | None, features: list[str] | None) -> RunReport:
         now = self.now()
         global_dry = dry_run or not self.cfg["enabled"]
         report = RunReport(started_at=now.isoformat(timespec="seconds"), dry_run=global_dry)
@@ -135,7 +138,7 @@ class Engine:
                 status = DriveStatus(str(drive.root), drive.volume_id, drive.label, "excluded", "設定で除外")
             else:
                 active.append(drive)
-                if global_dry or state.is_reviewed(drive.volume_id):
+                if global_dry or state.is_reviewed(drive.volume_id, features):
                     status = DriveStatus(str(drive.root), drive.volume_id, drive.label, "active")
                     if not global_dry:
                         acting.add(drive.volume_id)
@@ -156,16 +159,33 @@ class Engine:
                 report.actions.append(Action("error", str(store.root), "-", "purge", "隔離フォルダの整理",
                                              0, str(drive.root), message=str(e)))
 
+        protector = Protector(self.paths, self.cfg, now)
+
+        def wanted(feature: str) -> list[Drive]:
+            if features is not None and feature not in features:
+                return []
+            return [d for d in active if feature in drive_settings(self.cfg, d.volume_id)["features"]]
+
         # 2. F1 不要ファイル削除
-        ctx = cleanup.CleanupContext(
-            paths=self.paths, cfg=self.cfg, drives=active, now=now,
-            protector=Protector(self.paths, self.cfg, now),
-            running_processes=self.running_processes,
-        )
-        self._handle(cleanup.collect(ctx), active, acting, report, now)
+        if wanted("F1"):
+            ctx = cleanup.CleanupContext(
+                paths=self.paths, cfg=self.cfg, drives=active, now=now,
+                protector=protector, running_processes=self.running_processes,
+            )
+            self._handle(cleanup.collect(ctx), active, acting, report, now)
+
+        # 3. F2 重複ファイル検出 (F1 で隔離した後のファイルを対象にする)
+        f2_drives = wanted("F2")
+        if f2_drives:
+            with dedupe.HashCache(self.paths.hashcache_file, now) as cache:
+                dctx = dedupe.DedupeContext(
+                    paths=self.paths, cfg=self.cfg, drives=f2_drives, now=now,
+                    protector=protector, cache=cache,
+                )
+                self._handle(dedupe.collect(dctx), active, acting, report, now)
 
         for drive in active:
-            state.mark_reviewed(drive.volume_id)
+            state.mark_reviewed(drive.volume_id, features)
         state.save()
         report.finished_at = self.now().isoformat(timespec="seconds")
         self._save_report(report)
@@ -196,7 +216,9 @@ class Engine:
                 kind="", path=str(cand.path), feature=cand.feature, category=cand.category,
                 reason=cand.reason, size=cand.size, drive=str(drive.root),
             )
-            if drive.volume_id not in acting:
+            if cand.approval:
+                action.kind = "needs_approval"
+            elif drive.volume_id not in acting:
                 action.kind = "would_delete" if cand.immediate else "would_quarantine"
             else:
                 store = QuarantineStore(drive, self.paths.manifests_dir)

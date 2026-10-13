@@ -22,6 +22,7 @@ class Candidate:
     is_dir: bool = False
     immediate: bool = False  # True なら隔離せず即時削除
     source: str = "rule"  # "rule" / "ai"
+    approval: bool = False  # True なら自動では動かさず、承認待ちとして報告する
     entries: list[Path] = field(default_factory=list)
 
     @property
