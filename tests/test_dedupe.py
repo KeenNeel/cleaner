@@ -1,6 +1,8 @@
 import os
 from types import SimpleNamespace
 
+import pytest
+
 from cleaner import cli, config
 from cleaner.fsutil import is_cloud_only
 from cleaner.models import Candidate, Skipped
@@ -347,3 +349,28 @@ def test_dot_folders_are_app_data(env):
     cands, _ = collect(env, scan_app_folders=True)
     assert len(cands) == 1 and cands[0].approval
     assert "アプリのデータフォルダ (.lmstudio)" in cands[0].reason
+
+
+def test_installer_exe_does_not_make_app_folder(env):
+    folder = env.paths.home / "Desktop" / "desktop"
+    write(folder / "Docker Desktop Installer (1).exe", b"MZ")
+    write(folder / "setup_x64.exe", b"MZ")
+    write(env.paths.home / "Videos" / "rec.mp4", blob(160))
+    dup = write(folder / "movie.mp4", blob(160))
+    cands, _ = collect(env)
+    assert [(c.path, c.approval) for c in cands] == [(dup, False)]
+
+
+@pytest.mark.parametrize("name,expected", [
+    ("Docker Desktop Installer (1).exe", False),
+    ("setup.exe", False),
+    ("airset2_setup.exe", False),
+    ("uninstall.exe", True),
+    ("unins000.exe", True),
+    ("pinokio.exe", True),
+    ("Content Manager.update.exe", True),
+    ("setup.dll", True),
+    ("node-v24.12.0-x64.msi", False),
+])
+def test_is_app_file(name, expected):
+    assert dedupe.is_app_file(name) is expected

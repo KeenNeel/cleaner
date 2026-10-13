@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import re
 import sqlite3
 import stat
 from collections import defaultdict
@@ -42,6 +43,10 @@ CATEGORY_LABELS = {
 PARTIAL_BYTES = 64 * 1024
 # これと同居するファイル (とその下のフォルダ) はアプリのインストールフォルダとみなして触らない
 APP_EXTENSIONS = {".exe", ".dll"}
+# ただし、ダウンロードしたインストーラ (setup.exe, ○○ installer.exe 等) だけならアプリのフォルダとはみなさない
+# (uninstall.exe はインストール済みアプリに付いているものなので除く)
+_INSTALLER_RE = re.compile(r"setup|install", re.IGNORECASE)
+_UNINSTALLER_RE = re.compile(r"uninst", re.IGNORECASE)
 # フォルダ丸ごとの重複を調べるとき、これよりファイルが多いフォルダは比較しない
 MAX_FOLDER_FILES = 5000
 # フォルダ丸ごとの重複とみなす最小ファイル数 (1 ファイルだけのフォルダはファイル単位で扱う)
@@ -229,7 +234,7 @@ def _scan(ctx: DedupeContext, drive: Drive, min_size: int) -> Iterator[FileInfo]
             names = [e.name.lower() for e in entries]
             app_file = None
             if norm(current) not in loose_dirs:
-                app_file = next((n for n in names if os.path.splitext(n)[1] in APP_EXTENSIONS), None)
+                app_file = next((n for n in names if is_app_file(n)), None)
             if ".git" in names:
                 restricted = "Git リポジトリ"
             elif app_file:
@@ -255,6 +260,16 @@ def _scan(ctx: DedupeContext, drive: Drive, min_size: int) -> Iterator[FileInfo]
                 if path.suffix.lower() in PARTIAL_DOWNLOAD_SUFFIXES or is_cloud_only(st):
                     continue
                 yield FileInfo(path, st.st_size, st.st_mtime_ns, drive, restricted=restricted)
+
+
+def is_app_file(name: str) -> bool:
+    """アプリのフォルダの目印になるファイルか (.dll、またはインストーラ以外の .exe)。"""
+    stem, ext = os.path.splitext(name.lower())
+    if ext == ".dll":
+        return True
+    if ext != ".exe":
+        return False
+    return not _INSTALLER_RE.search(stem) or bool(_UNINSTALLER_RE.search(stem))
 
 
 def _log_skip(drive: Drive, folder: Path, reason: str) -> None:
