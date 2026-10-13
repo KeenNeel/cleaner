@@ -371,21 +371,34 @@ class FolderMatcher:
         return best
 
 
-def _folder_pairs(matcher: FolderMatcher, groups: list[list[FileInfo]]) -> list[tuple[Path, Path]]:
-    pairs: dict[tuple[str, str], tuple[Path, Path]] = {}
+def _folder_clusters(matcher: FolderMatcher, groups: list[list[FileInfo]]) -> list[list[Path]]:
+    """中身が完全に一致するフォルダのまとまり (3 か所以上に同じフォルダがあれば 1 つにまとめる)。"""
+    parent: dict[str, str] = {}
+    folders: dict[str, Path] = {}
+
+    def find(k: str) -> str:
+        while parent[k] != k:
+            parent[k] = parent[parent[k]]
+            k = parent[k]
+        return k
+
     for group in groups:
         peers = group[:MAX_FOLDER_PEERS]
         for i, a in enumerate(peers):
             for b in peers[i + 1:]:
                 pair = matcher.top_pair(a, b)
-                if pair:
-                    pairs.setdefault(tuple(sorted((norm(pair[0]), norm(pair[1])))), pair)
+                if not pair:
+                    continue
+                keys = [norm(f) for f in pair]
+                for k, f in zip(keys, pair, strict=True):
+                    parent.setdefault(k, k)
+                    folders[k] = f
+                parent[find(keys[0])] = find(keys[1])
 
-    def nested(p: tuple[Path, Path], q: tuple[Path, Path]) -> bool:
-        return all(any(is_under(x, y) for y in q) for x in p)
-
-    found = list(pairs.values())
-    return [p for p in found if not any(q is not p and nested(p, q) for q in found)]
+    clusters: dict[str, list[Path]] = defaultdict(list)
+    for k, f in folders.items():
+        clusters[find(k)].append(f)
+    return list(clusters.values())
 
 
 # ---- 判定 ----
@@ -447,21 +460,36 @@ def collect(ctx: DedupeContext) -> Iterator[Result]:
 
     # フォルダ丸ごとの重複は承認待ちにし、その中のファイルは個別には動かさない
     frozen: list[Path] = []
+    reported: list[Path] = []
     matcher = FolderMatcher(ctx)
-    for a, b in _folder_pairs(matcher, groups):
-        keep, dup = sorted((a, b), key=lambda p: rule.key(p, _folder_birthtime(p)))
-        frozen.extend((a, b))
-        listing = matcher.listing(dup) or {}
-        newest = max((m for _, _, m in listing.values()), default=0) / 1e9
-        reason = ctx.protector.check(dup, newest_mtime=newest)
-        if reason:
-            yield Skipped(dup, "duplicate_folder", reason)
-            continue
-        yield Candidate(
-            path=dup, feature=FEATURE, category="duplicate_folder",
-            reason=f"フォルダの中身がすべて {keep} と同じ ({len(listing)} ファイル)",
-            size=sum(s for _, s, _ in listing.values()), is_dir=True, approval=True,
-        )
+
+    def folder_size(folder: Path) -> int:
+        return sum(s for _, s, _ in (matcher.listing(folder) or {}).values())
+
+    # 外側の (大きい) フォルダから処理し、すでに候補にしたフォルダの中にあるものは重ねて出さない
+    clusters = sorted(_folder_clusters(matcher, groups), key=lambda c: -folder_size(c[0]))
+    for cluster in clusters:
+        frozen.extend(cluster)
+
+        def covered(folder: Path) -> bool:
+            return any(is_under(folder, r) for r in reported)
+
+        keep, *dups = sorted(cluster, key=lambda f: (covered(f), rule.key(f, _folder_birthtime(f))))
+        for dup in dups:
+            if covered(dup):
+                continue
+            reported.append(dup)
+            listing = matcher.listing(dup) or {}
+            newest = max((m for _, _, m in listing.values()), default=0) / 1e9
+            reason = ctx.protector.check(dup, newest_mtime=newest)
+            if reason:
+                yield Skipped(dup, "duplicate_folder", reason)
+                continue
+            yield Candidate(
+                path=dup, feature=FEATURE, category="duplicate_folder",
+                reason=f"フォルダの中身がすべて {keep} と同じ ({len(listing)} ファイル)",
+                size=folder_size(dup), is_dir=True, approval=True,
+            )
 
     decisions = [d for g in groups for d in decide(rule, g)
                  if not any(is_under(d.dup.path, r) or is_under(d.keep.path, r) for r in frozen)]

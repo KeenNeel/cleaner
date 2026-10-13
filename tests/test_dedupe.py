@@ -276,3 +276,30 @@ def test_skipped_folders_are_logged(env, caplog):
     with caplog.at_level("INFO", logger="cleaner.rules.dedupe"):
         collect(env)
     assert "Tools を飛ばしました: アプリのフォルダ (app.dll)" in caplog.text
+
+
+def test_folder_copies_in_many_places_are_reported_once(env):
+    # 同じ blobs フォルダが 3 か所、その中の 28 フォルダだけがもう 1 か所にある
+    home = env.paths.home
+    blobs = [
+        env.c.root / "ChordMini" / "cache" / "blobs",
+        home / "Desktop" / "ChordLyrics" / "cache" / "blobs",
+        home / "Desktop" / "backup" / "files" / "cache" / "blobs",
+    ]
+    lone_28 = home / "Desktop" / "lyrics-server" / "models" / "blobs" / "28"
+    for i, root in enumerate(blobs):
+        write(root.parent / "own.json", blob(110 + i))  # 親フォルダの中身はそれぞれ違う
+        for name, seed in (("a", 100), ("b", 101), ("28/x", 102), ("28/y", 103)):
+            write(root / name, blob(seed))
+    for name, seed in (("x", 102), ("y", 103)):
+        write(lone_28 / name, blob(seed))
+    write(lone_28.parent / "own.json", blob(120))
+
+    cands, _ = collect(env)
+    folders = {c.path: c for c in cands if c.category == "duplicate_folder"}
+    assert set(folders) == {blobs[1], blobs[2], lone_28}
+    keep = str(blobs[0])
+    assert all(f"すべて {keep}" in c.reason for c in folders.values() if c.path != lone_28)
+    assert f"すべて {blobs[0] / '28'}" in folders[lone_28].reason
+    assert sum(c.size for c in folders.values()) == 2 * 4 * 4096 + 2 * 4096
+    assert [c for c in cands if c.category != "duplicate_folder"] == []
