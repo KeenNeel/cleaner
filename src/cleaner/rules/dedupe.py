@@ -180,9 +180,13 @@ class HashCache:
 
 
 class KeepRule:
-    """① keep_priority の順 → ② パスが浅い → ③ 作成日時が古い。小さいキーほど残す。"""
+    """① keep_priority の順 → ② パスが浅い → ③ 作成日時が古い。小さいキーほど残す。
 
-    def __init__(self, paths: AppPaths, priorities: list[str]):
+    newest=True なら、更新日時 → 作成日時 が新しいものを最優先で残し、同じなら上の順で決める。
+    """
+
+    def __init__(self, paths: AppPaths, priorities: list[str], *, newest: bool = False):
+        self.newest = newest
         self.roots = [None if p == "*" else paths.expand(p) for p in priorities]
         self.other = self.roots.index(None) if None in self.roots else len(self.roots)
 
@@ -192,8 +196,9 @@ class KeepRule:
                 return i
         return self.other
 
-    def key(self, path: Path, birthtime: float) -> tuple:
-        return (self.rank(path), len(Path(norm(path)).parts), birthtime, norm(path))
+    def key(self, path: Path, birthtime: float, mtime_ns: int = 0) -> tuple:
+        base = (self.rank(path), len(Path(norm(path)).parts), birthtime, norm(path))
+        return (-mtime_ns, -birthtime, *base) if self.newest else base
 
 
 def _birthtime(st: os.stat_result) -> float:
@@ -399,10 +404,14 @@ class FolderMatcher:
         return best
 
 
-def _folder_clusters(matcher: FolderMatcher, groups: list[list[FileInfo]]) -> list[list[Path]]:
-    """中身が完全に一致するフォルダのまとまり (3 か所以上に同じフォルダがあれば 1 つにまとめる)。"""
+def _folder_clusters(matcher: FolderMatcher, groups: list[list[FileInfo]]) -> list[tuple[list[Path], str | None]]:
+    """中身が完全に一致するフォルダのまとまり (3 か所以上に同じフォルダがあれば 1 つにまとめる)。
+
+    Git リポジトリ・アプリのフォルダに関わるまとまりには、その理由を添える。
+    """
     parent: dict[str, str] = {}
     folders: dict[str, Path] = {}
+    restricted: dict[str, str] = {}
 
     def find(k: str) -> str:
         while parent[k] != k:
@@ -421,12 +430,19 @@ def _folder_clusters(matcher: FolderMatcher, groups: list[list[FileInfo]]) -> li
                 for k, f in zip(keys, pair, strict=True):
                     parent.setdefault(k, k)
                     folders[k] = f
+                reason = a.restricted or b.restricted
+                if reason:
+                    restricted[keys[0]] = restricted[keys[1]] = reason
                 parent[find(keys[0])] = find(keys[1])
 
     clusters: dict[str, list[Path]] = defaultdict(list)
+    reasons: dict[str, str] = {}
     for k, f in folders.items():
-        clusters[find(k)].append(f)
-    return list(clusters.values())
+        root = find(k)
+        clusters[root].append(f)
+        if k in restricted:
+            reasons[root] = restricted[k]
+    return [(members, reasons.get(root)) for root, members in clusters.items()]
 
 
 # ---- 判定 ----
@@ -442,7 +458,7 @@ class Decision:
 def decide(rule: KeepRule, group: list[FileInfo]) -> list[Decision]:
     """ドライブごとに 1 つ残し、さらにドライブ間で 1 つ残す。"""
     def order(files: list[FileInfo]) -> list[FileInfo]:
-        return sorted(files, key=lambda f: rule.key(f.path, f.birthtime))
+        return sorted(files, key=lambda f: rule.key(f.path, f.birthtime, f.mtime_ns))
 
     by_drive: dict[str, list[FileInfo]] = defaultdict(list)
     for f in group:
@@ -484,7 +500,10 @@ def collect(ctx: DedupeContext) -> Iterator[Result]:
         if len(members) >= 2:
             groups.append(members)
 
-    rule = KeepRule(ctx.paths, c["keep_priority"])
+    rule = KeepRule(ctx.paths, c["keep_priority"], newest=c["keep"] == "newest")
+    # approve_all: 承認待ちになるもの (ドライブまたぎ・フォルダ丸ごと) も隔離する。
+    # ただし Git リポジトリ・アプリのフォルダが絡むものは、消すとアプリが動かなくなるので常に承認待ち
+    approve_all = c["approve_all"]
 
     # フォルダ丸ごとの重複は承認待ちにし、その中のファイルは個別には動かさない
     frozen: list[Path] = []
@@ -494,29 +513,35 @@ def collect(ctx: DedupeContext) -> Iterator[Result]:
     def folder_size(folder: Path) -> int:
         return sum(s for _, s, _ in (matcher.listing(folder) or {}).values())
 
+    def folder_mtime_ns(folder: Path) -> int:
+        return max((m for _, _, m in (matcher.listing(folder) or {}).values()), default=0)
+
+    def covered(folder: Path) -> bool:
+        return any(is_under(folder, r) for r in reported)
+
     # 外側の (大きい) フォルダから処理し、すでに候補にしたフォルダの中にあるものは重ねて出さない
-    clusters = sorted(_folder_clusters(matcher, groups), key=lambda c: -folder_size(c[0]))
-    for cluster in clusters:
+    clusters = sorted(_folder_clusters(matcher, groups), key=lambda c: -folder_size(c[0][0]))
+    for cluster, restricted in clusters:
         frozen.extend(cluster)
-
-        def covered(folder: Path) -> bool:
-            return any(is_under(folder, r) for r in reported)
-
-        keep, *dups = sorted(cluster, key=lambda f: (covered(f), rule.key(f, _folder_birthtime(f))))
+        keep, *dups = sorted(cluster, key=lambda f: (
+            covered(f), rule.key(f, _folder_birthtime(f), folder_mtime_ns(f))))
+        note = f" ※{restricted}内のため自動では隔離しません" if restricted else ""
         for dup in dups:
             if covered(dup):
                 continue
             reported.append(dup)
             listing = matcher.listing(dup) or {}
-            newest = max((m for _, _, m in listing.values()), default=0) / 1e9
-            reason = ctx.protector.check(dup, newest_mtime=newest)
+            reason = ctx.protector.check(dup, newest_mtime=folder_mtime_ns(dup) / 1e9,
+                                         allow_git=bool(restricted))
             if reason:
                 yield Skipped(dup, "duplicate_folder", reason)
                 continue
+            if not os.path.isdir(longpath(keep)):
+                continue
             yield Candidate(
                 path=dup, feature=FEATURE, category="duplicate_folder",
-                reason=f"フォルダの中身がすべて {keep} と同じ ({len(listing)} ファイル)",
-                size=folder_size(dup), is_dir=True, approval=True,
+                reason=f"フォルダの中身がすべて {keep} と同じ ({len(listing)} ファイル){note}",
+                size=folder_size(dup), is_dir=True, approval=bool(restricted) or not approve_all,
             )
 
     decisions = [d for g in groups for d in decide(rule, g)
@@ -537,7 +562,7 @@ def collect(ctx: DedupeContext) -> Iterator[Result]:
             category="duplicate_cross_drive" if d.cross_drive else "duplicate",
             reason=f"{d.keep.path} と同じ内容 ({human_size(d.dup.size)}){note}",
             size=d.dup.size,
-            approval=bool(restricted) or (d.cross_drive and c["cross_drive"] == "report"),
+            approval=bool(restricted) or (d.cross_drive and c["cross_drive"] == "report" and not approve_all),
         )
 
 

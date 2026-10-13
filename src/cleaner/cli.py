@@ -60,6 +60,11 @@ def build_parser() -> argparse.ArgumentParser:
                         help="重複を探すファイルの最小サイズ (例: 100MB, 1GB)")
         sp.add_argument("--include-apps", action="store_true",
                         help="Git リポジトリ・アプリのフォルダの中も重複を探す (見つけても承認待ちにするだけ)")
+        sp.add_argument("--keep", choices=["priority", "newest"],
+                        help="重複のうち残すもの: priority (ドキュメント等を優先) / newest (新しいほうを残す)")
+        sp.add_argument("--approve-all", action="store_true",
+                        help="承認待ちの重複 (フォルダ丸ごと・ドライブまたぎ) も隔離する "
+                             "(Git リポジトリ・アプリのフォルダ内のものは除く)")
 
     lst = sub.add_parser("list", help="隔離ボックスの中身を表示する")
     lst.add_argument("--all", action="store_true", help="復元済み・本削除済みの履歴も表示する")
@@ -155,6 +160,10 @@ def main(argv: list[str] | None = None, *, paths: AppPaths | None = None, engine
                 engine.cfg["dedupe"]["min_size_kb"] = args.min_size
             if args.include_apps:
                 engine.cfg["dedupe"]["scan_app_folders"] = True
+            if args.keep:
+                engine.cfg["dedupe"]["keep"] = args.keep
+            if args.approve_all:
+                engine.cfg["dedupe"]["approve_all"] = True
             dry_run = args.command == "scan" or args.dry_run
             return cmd_run(engine, dry_run=dry_run, drive=args.drive, features=args.only, verbose=args.verbose)
         if args.command == "list":

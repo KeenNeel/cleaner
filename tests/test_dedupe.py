@@ -374,3 +374,53 @@ def test_installer_exe_does_not_make_app_folder(env):
 ])
 def test_is_app_file(name, expected):
     assert dedupe.is_app_file(name) is expected
+
+
+def test_keep_newest(env):
+    home = env.paths.home
+    old_doc = write(home / "Documents" / "a.bin", blob(170), age_days=30)
+    new_desk = write(home / "Desktop" / "a.bin", blob(170), age_days=5)
+    assert [c.path for c in collect(env)[0]] == [new_desk]  # 既定はドキュメント優先
+    assert [c.path for c in collect(env, keep="newest")[0]] == [old_doc]
+
+
+def test_approve_all_quarantines_folders_and_cross_drive_but_not_apps(env):
+    home = env.paths.home
+    for name, seed in (("1.jpg", 180), ("2.jpg", 181)):
+        write(home / "Pictures" / "trip" / name, blob(seed), age_days=30)
+        write(home / "Desktop" / "trip copy" / name, blob(seed), age_days=5)
+    write(home / "Music" / "song.wav", blob(182))
+    backup = write(env.d.root / "song.wav", blob(182))
+    for name, seed in (("x.dll", 183), ("y.dll", 184)):
+        write(home / "sd" / ".git" / "HEAD", b"ref: sd")
+        write(home / "sd" / "venv" / "lib" / name, blob(seed))
+        write(home / "ace" / ".git" / "HEAD", b"ref: ace")
+        write(home / "ace" / "venv" / "lib" / name, blob(seed))
+
+    cands, _ = collect(env, approve_all=True, keep="newest", scan_app_folders=True)
+    result = {c.path: c.approval for c in cands}
+    # 新しいほう (Desktop) を残し、古いほう (Pictures) のフォルダを隔離する
+    assert result[home / "Pictures" / "trip"] is False
+    songs = [p for p in result if p.name == "song.wav"]
+    assert len(songs) == 1 and songs[0] in (backup, home / "Music" / "song.wav") and result[songs[0]] is False
+    venv = [p for p in result if "venv" in p.parts]
+    assert len(venv) == 1 and result[venv[0]] is True  # アプリの中は常に承認待ち
+
+
+def test_cli_approve_all_run_and_restore(enabled_env, capsys):
+    env = enabled_env
+    home = env.paths.home
+    for name, seed in (("1.jpg", 190), ("2.jpg", 191)):
+        write(home / "Pictures" / "trip" / name, blob(seed), age_days=30)
+        write(home / "Desktop" / "trip copy" / name, blob(seed), age_days=5)
+    old = home / "Pictures" / "trip"
+    env.cfg = config.load(env.paths)
+    env.cfg["enabled"] = True
+    code = cli.main(["run", "--only", "F2", "--keep", "newest", "--approve-all"],
+                    paths=env.paths, engine=env.engine())
+    out = capsys.readouterr().out
+    assert code == 0 and "[隔離] 重複フォルダ: 1 件" in out
+    assert not old.exists() and (home / "Desktop" / "trip copy" / "1.jpg").exists()
+    ref = next(r for r in env.engine().items() if r.item.category == "duplicate_folder")
+    env.engine().restore([ref])
+    assert (old / "2.jpg").read_bytes() == blob(191)
