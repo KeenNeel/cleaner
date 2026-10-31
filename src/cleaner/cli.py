@@ -10,7 +10,7 @@ import sys
 from collections import defaultdict
 from datetime import datetime, timedelta
 
-from cleaner import __version__, config
+from cleaner import __version__, config, musicapps
 from cleaner.appdirs import AppPaths, default_paths
 from cleaner.engine import Engine, ItemRef, RunReport
 from cleaner.fsutil import human_size
@@ -69,6 +69,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("drives", help="検出したドライブと対象状況を表示する")
     sub.add_parser("enable", help="自動整理を有効にする (隔離・移動を実際に行う)")
     sub.add_parser("disable", help="自動整理を無効にする (ドライランのみになる)")
+
+    music = sub.add_parser("music-apps", help="音楽生成アプリ・関連ソフトを探して HTML の一覧を作る (読み取りのみ)")
+    musicapps.add_arguments(music)
     return p
 
 
@@ -110,6 +113,8 @@ def main(argv: list[str] | None = None, *, paths: AppPaths | None = None, engine
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(errors="replace")
     args = build_parser().parse_args(argv)
+    if args.command == "music-apps":
+        return musicapps.run(args)
     paths = paths or default_paths()
     if engine is None:
         setup_logging(paths, args.verbose)

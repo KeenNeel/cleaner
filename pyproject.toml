@@ -27,3 +27,7 @@ line-length = 120
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+# 日本語の説明文と HTML テンプレートは行を分けると読みにくくなるため
+"src/cleaner/musicapps*.py" = ["E501"]
