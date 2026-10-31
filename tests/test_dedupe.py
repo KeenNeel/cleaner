@@ -424,3 +424,64 @@ def test_cli_approve_all_run_and_restore(enabled_env, capsys):
     ref = next(r for r in env.engine().items() if r.item.category == "duplicate_folder")
     env.engine().restore([ref])
     assert (old / "2.jpg").read_bytes() == blob(191)
+
+
+def test_folder_inside_kept_folder_is_never_removed(env):
+    # 実際に起きた例: blobs が 3 か所、その中の 28 だけが lyrics-server にもある。
+    # 新しいほうを残す指定で、残した blobs の中の 28 まで隔離されていた
+    home = env.paths.home
+    main = env.c.root / "ChordMini" / "cache" / "blobs"
+    newest = home / "Desktop" / "ChordLyrics" / "cache" / "blobs"
+    backup = home / "Desktop" / "backup" / "cache" / "blobs"
+    lone_28 = home / "Desktop" / "lyrics-server" / "models" / "blobs" / "28"
+    for i, (root, age) in enumerate(((main, 30), (newest, 2), (backup, 40))):
+        write(root.parent / "own.json", blob(200 + i), age_days=age)
+        for name, seed in (("a", 210), ("b", 211), ("28/x", 212), ("28/y", 213)):
+            write(root / name, blob(seed), age_days=age)
+    for name, seed in (("x", 212), ("y", 213)):
+        write(lone_28 / name, blob(seed), age_days=1.5)  # いちばん新しい
+    write(lone_28.parent / "own.json", blob(220))
+
+    cands, _ = collect(env, keep="newest", approve_all=True)
+    removed = {c.path for c in cands}
+    assert newest not in removed
+    assert not any(is_under_path(p, newest) for p in removed)
+    assert removed == {main, backup, lone_28}
+    assert all(not c.approval for c in cands)
+
+
+def is_under_path(path, root):
+    return path == root or root in path.parents
+
+
+def test_daw_project_audio_is_not_auto_quarantined(env):
+    project = env.c.root / "Cakewalk Projects" / "song"
+    write(project / "song.cwp", b"cwp")
+    write(project / "Audio" / "take.wav", blob(230))
+    write(project / "Audio" / "Vocal (bounced).wav", blob(230))
+    assert collect(env, approve_all=True)[0] == []
+    cands, _ = collect(env, approve_all=True, scan_app_folders=True)
+    assert len(cands) == 1 and cands[0].approval
+    assert "制作プロジェクトのフォルダ (song.cwp)" in cands[0].reason
+
+
+def test_library_folders_are_not_auto_quarantined(env):
+    home = env.paths.home
+    for project in ("win11-stickies", "smart-sticky-notes"):
+        write(home / project / "package.json", project.encode())
+        for name, seed in (("a.bin", 240), ("darwin/b.bin", 241)):
+            write(home / project / "node_modules" / "app-builder-bin" / name, blob(seed))
+    assert collect(env, approve_all=True)[0] == []
+    cands, _ = collect(env, approve_all=True, scan_app_folders=True)
+    assert [c.approval for c in cands] == [True]
+    assert "ライブラリのフォルダ (node_modules)" in cands[0].reason
+
+
+def test_folder_with_app_files_stays_approval(env):
+    home = env.paths.home
+    for where in ("ToolsA", "ToolsB"):
+        write(home / where / "own.txt", where.encode())
+        write(home / where / "pkg" / "readme.bin", blob(250))
+        write(home / where / "pkg" / "win" / "tool.exe", blob(251))
+    cands, _ = collect(env, approve_all=True, scan_app_folders=True)
+    assert [c.approval for c in cands] == [True]

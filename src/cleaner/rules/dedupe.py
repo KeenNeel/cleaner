@@ -47,6 +47,23 @@ APP_EXTENSIONS = {".exe", ".dll"}
 # (uninstall.exe はインストール済みアプリに付いているものなので除く)
 _INSTALLER_RE = re.compile(r"setup|install", re.IGNORECASE)
 _UNINSTALLER_RE = re.compile(r"uninst", re.IGNORECASE)
+# アプリが使うライブラリの置き場所。中のファイルが重複していても、それぞれのアプリが必要とする
+LIBRARY_DIR_NAMES = {"node_modules", "venv", "site-packages", "dist-packages", "bower_components"}
+# 制作ソフトのプロジェクトファイル。同じフォルダ以下の素材 (音声・映像) はファイル名で参照されている
+PROJECT_EXTENSIONS = {
+    ".cwp", ".cwb",  # Cakewalk
+    ".als",  # Ableton Live
+    ".flp",  # FL Studio
+    ".rpp",  # REAPER
+    ".cpr", ".npr",  # Cubase / Nuendo
+    ".song",  # Studio One
+    ".ptx", ".ptf",  # Pro Tools
+    ".aup", ".aup3",  # Audacity
+    ".prproj",  # Premiere Pro
+    ".aep",  # After Effects
+    ".drp",  # DaVinci Resolve
+    ".veg",  # VEGAS
+}
 # フォルダ丸ごとの重複を調べるとき、これよりファイルが多いフォルダは比較しない
 MAX_FOLDER_FILES = 5000
 # フォルダ丸ごとの重複とみなす最小ファイル数 (1 ファイルだけのフォルダはファイル単位で扱う)
@@ -237,11 +254,16 @@ def _scan(ctx: DedupeContext, drive: Drive, min_size: int) -> Iterator[FileInfo]
             continue
         if restricted is None:
             names = [e.name.lower() for e in entries]
-            app_file = None
+            app_file = project_file = None
             if norm(current) not in loose_dirs:
                 app_file = next((n for n in names if is_app_file(n)), None)
+                project_file = next((n for n in names if os.path.splitext(n)[1] in PROJECT_EXTENSIONS), None)
             if ".git" in names:
                 restricted = "Git リポジトリ"
+            elif project_file:
+                restricted = f"制作プロジェクトのフォルダ ({project_file})"
+            elif current.name.lower() in LIBRARY_DIR_NAMES:
+                restricted = f"ライブラリのフォルダ ({current.name})"
             elif app_file:
                 restricted = f"アプリのフォルダ ({app_file})"
             elif current.name.startswith(".") and current != drive.root:
@@ -516,18 +538,30 @@ def collect(ctx: DedupeContext) -> Iterator[Result]:
     def folder_mtime_ns(folder: Path) -> int:
         return max((m for _, _, m in (matcher.listing(folder) or {}).values()), default=0)
 
+    kept: list[Path] = []
+
     def covered(folder: Path) -> bool:
         return any(is_under(folder, r) for r in reported)
 
-    # 外側の (大きい) フォルダから処理し、すでに候補にしたフォルダの中にあるものは重ねて出さない
+    def inside_kept(folder: Path) -> bool:
+        return any(is_under(folder, k) for k in kept)
+
+    # 外側の (大きい) フォルダから処理する。すでに候補にしたフォルダの中にあるものは重ねて出さず、
+    # 残すと決めたフォルダの中にあるものは (内側だけ見て重複でも) 絶対に候補にしない
     clusters = sorted(_folder_clusters(matcher, groups), key=lambda c: -folder_size(c[0][0]))
     for cluster, restricted in clusters:
         frozen.extend(cluster)
+        if not restricted:
+            app_file = next((Path(rel).name for rel in matcher.listing(cluster[0]) or {}
+                             if is_app_file(Path(rel).name)), None)
+            if app_file:
+                restricted = f"アプリのファイル ({app_file}) を含むフォルダ"
         keep, *dups = sorted(cluster, key=lambda f: (
-            covered(f), rule.key(f, _folder_birthtime(f), folder_mtime_ns(f))))
+            covered(f), not inside_kept(f), rule.key(f, _folder_birthtime(f), folder_mtime_ns(f))))
+        kept.append(keep)
         note = f" ※{restricted}内のため自動では隔離しません" if restricted else ""
         for dup in dups:
-            if covered(dup):
+            if covered(dup) or inside_kept(dup):
                 continue
             reported.append(dup)
             listing = matcher.listing(dup) or {}
