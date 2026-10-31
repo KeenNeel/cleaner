@@ -231,6 +231,7 @@ foreach ($p in @($Desktops) + @($StartMenus) + @($ProgramDirs) + @($ShallowDirs)
 }
 
 $Sources = New-Object System.Collections.ArrayList
+$LinkFiles = New-Object System.Collections.ArrayList
 $Errors = New-Object System.Collections.ArrayList
 
 # ---------------------------------------------------------------------------
@@ -275,11 +276,18 @@ function Add-Shortcuts([string]$Dir, [switch]$Recurse) {
         if ($ext -eq '.lnk' -and $Shell) {
             $s = New-Source 'shortcut' $f.BaseName
             $s.shortcut = $f.FullName
+            $lnkArgs = ''
             try {
                 $lnk = $Shell.CreateShortcut($f.FullName)
                 $s.target = Expand-PathText $lnk.TargetPath
                 $s.location = Expand-PathText $lnk.WorkingDirectory
+                $lnkArgs = [string]$lnk.Arguments
             } catch { }
+            $m = [regex]::Match($lnkArgs, 'https?://[^\s"'']+')
+            if ($m.Success -and $s.target -and (Get-Leaf $s.target) -match '(?i)(chrome|msedge|firefox|brave|opera|vivaldi|chrome_proxy|msedge_proxy)\.exe$') {
+                [void]$LinkFiles.Add([pscustomobject]@{ path = $f.FullName; url = $m.Value; name = $f.BaseName; from = 'app' })
+                continue
+            }
             [void]$Sources.Add($s)
         } elseif ($ext -eq '.url') {
             $url = $null
@@ -288,13 +296,9 @@ function Add-Shortcuts([string]$Dir, [switch]$Recurse) {
                 if ($m.Success) { $url = $m.Groups[1].Value }
             } catch { }
             if (-not $url) { continue }
-            if ($url.ToLowerInvariant().StartsWith('file:')) {
-                $s = New-Source 'shortcut' $f.BaseName
-                try { $s.target = ([Uri]$url).LocalPath } catch { }
-            } else {
-                $s = New-Source 'url' $f.BaseName
-                $s.url = $url
-            }
+            if (-not $url.ToLowerInvariant().StartsWith('file:')) { continue }  # Web のリンクは 5. で調べる
+            $s = New-Source 'shortcut' $f.BaseName
+            try { $s.target = ([Uri]$url).LocalPath } catch { }
             $s.shortcut = $f.FullName
             [void]$Sources.Add($s)
         } elseif ($ext -eq '.exe' -or $ext -eq '.bat' -or $ext -eq '.cmd') {
@@ -481,6 +485,104 @@ function Get-ReadmeSummary([string]$Dir) {
         }
     }
     return ''
+}
+
+
+function Clean-MarkdownLine([string]$t) {
+    $t = [regex]::Replace($t, '!\[[^\]]*\]\([^)]*\)', '')
+    $t = [regex]::Replace($t, '\[([^\]]*)\]\([^)]*\)', '$1')
+    $t = [regex]::Replace($t, '<[^>]+>', '')
+    $t = $t.Replace('**', '').Replace('__', '').Replace('`', '').Trim()
+    if ($t.Length -gt 200) { $t = $t.Substring(0, 200) + '…' }
+    return $t
+}
+
+# フォルダ内の README・package.json・pyproject.toml・起動スクリプトから、概要・機能・使い方を読み取る
+function Get-LocalProjectInfo([string]$Dir) {
+    $info = [pscustomobject]@{ overview = ''; features = @(); usage = @(); urls = @(); packageName = '' }
+    $readme = ''
+    foreach ($n in @('README_ja.md', 'README.ja.md', 'README-ja.md', 'README.md', 'readme.md', 'Readme.md', 'README.txt', 'readme.txt', 'README')) {
+        $readme = Read-TextSafe (Join-Path $Dir $n) 1048576
+        if ($readme) { break }
+    }
+    $features = New-Object System.Collections.ArrayList
+    $usage = New-Object System.Collections.ArrayList
+    if ($readme) {
+        $info.overview = Get-ReadmeSummary $Dir
+        $section = ''
+        $inCode = $false
+        foreach ($line in ($readme -split "`r?`n")) {
+            $t = $line.Trim()
+            if ($t.StartsWith('```')) { $inCode = -not $inCode; continue }
+            if (-not $inCode -and $t -match '^#{1,6}\s*(.+)$') {
+                $h = $Matches[1].ToLowerInvariant()
+                if ($h -match '(feature|機能|特徴|what it does|highlight|できること|overview|概要)') { $section = 'f' }
+                elseif ($h -match '(usage|使い方|使用方法|getting started|quick ?start|how to|run|起動|実行|install|インストール|setup|セットアップ|導入|docker)') { $section = 'u' }
+                else { $section = '' }
+                continue
+            }
+            if (-not $section -or -not $t) { continue }
+            if ($inCode) {
+                if ($section -eq 'u' -and $usage.Count -lt 12 -and -not $t.StartsWith('#')) { [void]$usage.Add('コマンド: ' + $t) }
+                continue
+            }
+            $m = [regex]::Match($t, '^([-*+]|\d+[.)])\s+(.+)$')
+            if (-not $m.Success) { continue }
+            $item = Clean-MarkdownLine $m.Groups[2].Value
+            if ($item.Length -lt 2) { continue }
+            if ($section -eq 'f' -and $features.Count -lt 12) { [void]$features.Add($item) }
+            elseif ($section -eq 'u' -and $usage.Count -lt 12) { [void]$usage.Add($item) }
+        }
+    }
+    # package.json (Node.js)
+    $pkgText = Read-TextSafe (Join-Path $Dir 'package.json')
+    if ($pkgText) {
+        try {
+            $pkg = $pkgText | ConvertFrom-Json
+            if ($pkg.name) { $info.packageName = [string]$pkg.name }
+            if ($pkg.description -and -not $info.overview) { $info.overview = [string]$pkg.description }
+            if ($pkg.scripts) {
+                foreach ($k in @('dev', 'start', 'serve', 'server', 'build')) {
+                    $v = $pkg.scripts.$k
+                    if ($v -and $usage.Count -lt 14) { [void]$usage.Add("npm run $k  (実行される内容: $v)") }
+                }
+                if ($usage.Count -gt 0 -and -not (Test-Exists (Join-Path $Dir 'node_modules') -Folder)) {
+                    [void]$usage.Insert(0, '初回のみ: このフォルダで npm install を実行して必要なパッケージを入れる')
+                }
+            }
+        } catch { }
+    }
+    # pyproject.toml / setup.py (Python)
+    $pyText = Read-TextSafe (Join-Path $Dir 'pyproject.toml')
+    if ($pyText -and -not $info.overview) {
+        $m = [regex]::Match($pyText, '(?m)^\s*description\s*=\s*"([^"]+)"')
+        if ($m.Success) { $info.overview = $m.Groups[1].Value }
+    }
+    if ((Test-Exists (Join-Path $Dir 'requirements.txt')) -and $usage.Count -eq 0) {
+        [void]$usage.Add('初回のみ: pip install -r requirements.txt で必要なライブラリを入れる')
+    }
+    foreach ($py in @('app.py', 'main.py', 'server.py', 'webui.py', 'launch.py', 'run.py')) {
+        if ((Test-Exists (Join-Path $Dir $py)) -and $usage.Count -lt 14) { [void]$usage.Add("python $py で起動 (このフォルダで実行)"); break }
+    }
+    # 待ち受けるポート (ブラウザで開くアドレス)
+    $ports = New-Object System.Collections.ArrayList
+    $texts = @($pkgText)
+    foreach ($f in @(Get-ChildItem -LiteralPath $Dir -File -ErrorAction SilentlyContinue | Where-Object {
+                @('.py', '.js', '.ts', '.bat', '.cmd', '.env', '.json', '.yml', '.yaml', '.toml', '.ini') -contains $_.Extension.ToLowerInvariant() -or $_.Name -eq '.env' } |
+            Select-Object -First 40)) {
+        $texts += Read-TextSafe $f.FullName 131072
+    }
+    foreach ($t in $texts) {
+        if (-not $t) { continue }
+        foreach ($m in [regex]::Matches($t, '(?i)(?:--port[= ]+|\bport\s*[=:]\s*["'']?|localhost:|127\.0\.0\.1:|0\.0\.0\.0:)(\d{2,5})\b')) {
+            $pn = [int]$m.Groups[1].Value
+            if ($pn -ge 80 -and $pn -le 65535 -and -not $ports.Contains($pn)) { [void]$ports.Add($pn) }
+        }
+    }
+    $info.urls = @($ports | Select-Object -First 3 | ForEach-Object { "http://localhost:$_" })
+    $info.features = @($features.ToArray())
+    $info.usage = @($usage.ToArray())
+    return $info
 }
 
 function Get-PEArch([string]$Path) {
@@ -719,6 +821,7 @@ foreach ($s in $Sources) {
             $Apps[$key] = [pscustomobject]@{
                 key = $key; name = $entry.name; category = $entry.category; purpose = $entry.purpose
                 url = $entry.url; howto = $entry.howto; launchNote = $entry.launch_note; exes = @($entry.exes)
+                features = @($entry.features); usage = @($entry.usage)
                 sources = (New-Object System.Collections.ArrayList)
             }
         }
@@ -729,6 +832,7 @@ foreach ($s in $Sources) {
                 key = $key; name = $s.name; category = $OtherCategory
                 purpose = 'カタログ未登録のため自動判定。名前から音楽関連ソフトの可能性があります。'
                 url = [string]$s.url; howto = '公式ページのマニュアルを参照してください。'; launchNote = ''; exes = @()
+                features = @(); usage = @()
                 sources = (New-Object System.Collections.ArrayList)
             }
         }
@@ -738,6 +842,7 @@ foreach ($s in $Sources) {
             $Apps[$key] = [pscustomobject]@{
                 key = $key; name = $s.name; category = $OtherCategory; purpose = $s.purpose
                 url = ''; howto = 'フォルダ内の README (説明書) を参照してください。'; launchNote = ''; exes = @('start.bat', 'run.bat', 'webui.bat', 'start.cmd', 'run.cmd')
+                features = @(); usage = @()
                 sources = (New-Object System.Collections.ArrayList)
             }
         }
@@ -817,9 +922,18 @@ foreach ($app in $Apps.Values) {
 
     $purpose = $app.purpose
     $url = $app.url
-    if ($location -and $app.key.StartsWith('folder:')) {
-        $readme = Get-ReadmeSummary $location
-        if ($readme) { $purpose = $purpose + ' README より: ' + $readme }
+    $features = @($app.features)
+    $usage = @($app.usage)
+    $localUrls = @()
+    $packageName = ''
+    if ($location -and ($app.key.StartsWith('folder:') -or $features.Count -eq 0)) {
+        $pi = Get-LocalProjectInfo $location
+        if ($pi.overview) { $purpose = $purpose + ' README より: ' + $pi.overview }
+        if ($features.Count -eq 0) { $features = @($pi.features) }
+        if ($usage.Count -eq 0) { $usage = @($pi.usage) }
+        $localUrls = @($pi.urls)
+        $packageName = $pi.packageName
+        if ($localUrls.Count -gt 0 -and $app.key.StartsWith('folder:')) { $usage += ('起動したら、ブラウザで ' + ($localUrls -join ' または ') + ' を開く') }
     }
     if ($location -and -not $url) { $url = Get-GitRemote $location }
     $rt = Get-RuntimeInfo $app $location $launch @($kinds.ToArray()) @($shortcuts.ToArray())
@@ -828,13 +942,248 @@ foreach ($app in $Apps.Values) {
         name = $app.name; category = $app.category; purpose = $purpose; url = $url; howto = $app.howto
         launchNote = $app.launchNote; location = $location; size = $size; sizeNote = $sizeNote
         launchFile = $launch; shortcuts = @($shortcuts.ToArray()); version = $version; publisher = $publisher
+        features = @($features); usage = @($usage); localUrls = @($localUrls); packageName = $packageName
         names = @($names.ToArray()); kinds = @($kinds.ToArray()); webUrl = $webUrl
         runtime = $rt.runtime; gpu = $rt.gpu; portable = $rt.portable; portableReason = $rt.portableReason
     })
 }
 
 # ---------------------------------------------------------------------------
-# 5. プラグイン
+# 5. インターネットショートカット (.url など): リンク先を調べて音楽系かどうかを判定する
+
+Write-Step 'インターネットショートカットを探しています…'
+$WebServices = @($Catalog.webServices)
+$WebKeywordRx = @($Catalog.webKeywords | ForEach-Object { New-Object Text.RegularExpressions.Regex($_, $RxOpt) })
+$HubKind = 'AI モデル・コード公開サイト'
+
+function Find-UrlFiles([string]$Dir, [int]$Level, [int]$Depth, [string]$From = '') {
+    $items = @()
+    try { $items = (New-Object IO.DirectoryInfo $Dir).GetFileSystemInfos() } catch { return }
+    foreach ($i in $items) {
+        if ($i -is [IO.DirectoryInfo]) {
+            $low = $i.Name.ToLowerInvariant()
+            if ($Level -ge $Depth -or $SkipDirs -contains $low -or $FolderSkipDirs -contains $low -or $low.StartsWith('.') -or
+                $low.StartsWith('$') -or (Test-Reparse $i.Attributes)) { continue }
+            Find-UrlFiles $i.FullName ($Level + 1) $Depth $From
+            continue
+        }
+        if ($i.Extension.ToLowerInvariant() -ne '.url') { continue }
+        $k = $i.FullName.ToLowerInvariant()
+        if ($script:SeenUrlFiles.ContainsKey($k)) { continue }
+        $script:SeenUrlFiles[$k] = $true
+        $text = Read-TextSafe $i.FullName 65536
+        $m = [regex]::Match($text, '(?im)^\s*URL\s*=\s*(\S+)')
+        if (-not $m.Success) { continue }
+        $u = $m.Groups[1].Value
+        if ($u -notmatch '^(?i)https?://') { continue }
+        [void]$LinkFiles.Add([pscustomobject]@{ path = $i.FullName; url = $u; name = [IO.Path]::GetFileNameWithoutExtension($i.Name); from = $From })
+    }
+}
+$script:SeenUrlFiles = @{}
+foreach ($d in @($Desktops)) { Find-UrlFiles $d 1 5 }
+foreach ($d in @($ShallowDirs)) { Find-UrlFiles $d 1 4 }
+foreach ($d in @($StartMenus)) { Find-UrlFiles $d 1 3 }
+$fav = [Environment]::GetFolderPath('Favorites')
+if ($fav -and (Test-Exists $fav -Folder)) { Find-UrlFiles $fav 1 4 'favorites' }
+
+function Find-WebService([string]$HostName) {
+    foreach ($w in $WebServices) {
+        foreach ($d in @($w.domains)) {
+            if ($HostName -eq $d -or $HostName.EndsWith('.' + $d)) { return $w }
+        }
+    }
+    return $null
+}
+
+function Test-WebMusic([string]$Text) {
+    if (-not $Text) { return $false }
+    foreach ($r in $WebKeywordRx) { if ($r.IsMatch($Text)) { return $true } }
+    return $false
+}
+
+# 親フォルダの名前 (music_ai など) が音楽系なら、その名前を返す
+function Get-MusicFolderContext([string]$Path) {
+    $d = Get-Parent $Path
+    $n = 0
+    while ($d -and $n -lt 6) {
+        $leaf = Get-Leaf $d
+        if (-not $leaf -or $NotLocation.ContainsKey($d.TrimEnd('\').ToLowerInvariant())) { break }
+        if ((Get-FolderPurpose $leaf) -or (Find-CatalogEntry @($leaf))) { return $leaf }
+        $d = Get-Parent $d
+        $n++
+    }
+    return ''
+}
+
+try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072 -bor 12288 } catch {
+    try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072 } catch { }
+}
+
+# リンク先のページを読み、タイトルと説明文を取り出す
+function Get-WebPageInfo([string]$Url) {
+    $r = [pscustomobject]@{ title = ''; description = ''; error = '' }
+    try {
+        $req = [Net.HttpWebRequest]::Create($Url)
+        $req.Timeout = 8000
+        $req.ReadWriteTimeout = 8000
+        $req.UserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
+        $req.Accept = 'text/html,application/xhtml+xml,*/*;q=0.8'
+        $req.Headers.Add('Accept-Language', 'ja,en;q=0.8')
+        $req.AutomaticDecompression = [Net.DecompressionMethods]::GZip -bor [Net.DecompressionMethods]::Deflate
+        $resp = $req.GetResponse()
+        try {
+            $ct = [string]$resp.ContentType
+            $stream = $resp.GetResponseStream()
+            $ms = New-Object IO.MemoryStream
+            $buf = New-Object byte[] 65536
+            while ($ms.Length -lt 786432) {
+                $n = $stream.Read($buf, 0, $buf.Length)
+                if ($n -le 0) { break }
+                $ms.Write($buf, 0, $n)
+            }
+            $bytes = $ms.ToArray()
+        } finally { $resp.Close() }
+        $cs = ''
+        $m = [regex]::Match($ct, '(?i)charset=([\w-]+)')
+        if ($m.Success) { $cs = $m.Groups[1].Value }
+        if (-not $cs) {
+            $head = [Text.Encoding]::ASCII.GetString($bytes, 0, [Math]::Min($bytes.Length, 8192))
+            $m = [regex]::Match($head, '(?i)<meta[^>]+charset\s*=\s*["'']?([\w-]+)')
+            if ($m.Success) { $cs = $m.Groups[1].Value }
+        }
+        $enc = [Text.Encoding]::UTF8
+        if ($cs) { try { $enc = [Text.Encoding]::GetEncoding($cs) } catch { } }
+        $html = $enc.GetString($bytes)
+        $title = ''
+        foreach ($pat in @('(?is)<meta[^>]+property\s*=\s*["'']og:title["''][^>]*content\s*=\s*"([^"]*)"',
+                '(?is)<meta[^>]+content\s*=\s*"([^"]*)"[^>]*property\s*=\s*["'']og:title["'']',
+                '(?is)<title[^>]*>(.*?)</title>')) {
+            $m = [regex]::Match($html, $pat)
+            if ($m.Success -and $m.Groups[1].Value.Trim()) { $title = $m.Groups[1].Value; break }
+        }
+        $desc = ''
+        foreach ($pat in @('(?is)<meta[^>]+(?:name|property)\s*=\s*["''](?:og:)?description["''][^>]*content\s*=\s*"([^"]*)"',
+                '(?is)<meta[^>]+content\s*=\s*"([^"]*)"[^>]*(?:name|property)\s*=\s*["''](?:og:)?description["'']')) {
+            $m = [regex]::Match($html, $pat)
+            if ($m.Success -and $m.Groups[1].Value.Trim()) { $desc = $m.Groups[1].Value; break }
+        }
+        $r.title = ([Net.WebUtility]::HtmlDecode($title) -replace '\s+', ' ').Trim()
+        $r.description = ([Net.WebUtility]::HtmlDecode($desc) -replace '\s+', ' ').Trim()
+        if ($r.description.Length -gt 300) { $r.description = $r.description.Substring(0, 300) + '…' }
+    } catch {
+        $msg = $_.Exception.Message
+        if ($_.Exception.InnerException) { $msg = $_.Exception.InnerException.Message }
+        $r.error = $msg
+    }
+    return $r
+}
+
+$Links = [ordered]@{}
+$NonMusicLinks = New-Object System.Collections.ArrayList
+$PageCache = @{}
+$total = $LinkFiles.Count
+Write-Step ("{0} 件のインターネットショートカットが見つかりました。リンク先を確認しています…" -f $total)
+$idx = 0
+foreach ($lf in $LinkFiles) {
+    $idx++
+    $uri = $null
+    try { $uri = [Uri]$lf.url } catch { continue }
+    $hostName = $uri.Host.ToLowerInvariant()
+    if ($hostName.StartsWith('www.')) { $hostName = $hostName.Substring(4) }
+    $svc = Find-WebService $hostName
+    $isHub = ($svc -and $svc.kind -eq $HubKind)
+    $isLocal = @('localhost', '127.0.0.1', '0.0.0.0', '::1') -contains $hostName
+    $folderCtx = Get-MusicFolderContext $lf.path
+    $urlText = [Uri]::UnescapeDataString($uri.AbsolutePath + ' ' + $uri.Query) + ' ' + $hostName
+    $entry = Find-CatalogEntry @($lf.name)
+    if (-not $entry -and $hostName -eq 'github.com') {
+        foreach ($e in $Catalog.entries) {
+            if ($e.url -and $e.url.ToLowerInvariant().StartsWith('https://github.com' + $uri.AbsolutePath.ToLowerInvariant().TrimEnd('/'))) {
+                if ($uri.AbsolutePath.Trim('/').Split('/').Count -ge 2) { $entry = $e; break }
+            }
+        }
+    }
+
+    # 既知のサービス以外はリンク先を読んでタイトル・説明を得る (GitHub などはリポジトリの説明が分かる)
+    $page = $null
+    $wantPage = (-not $isLocal -and (-not $svc -or $isHub) -and ($lf.from -ne 'favorites' -or $folderCtx -or $isHub))
+    if ($wantPage) {
+        $ck = $lf.url.ToLowerInvariant()
+        if (-not $PageCache.ContainsKey($ck) -and $PageCache.Count -ge 150) { $wantPage = $false }
+    }
+    if ($wantPage) {
+        $ck = $lf.url.ToLowerInvariant()
+        if (-not $PageCache.ContainsKey($ck)) {
+            Write-Step ("  [{0}/{1}] {2}" -f $idx, $total, $lf.url)
+            $PageCache[$ck] = Get-WebPageInfo $lf.url
+        }
+        $page = $PageCache[$ck]
+    }
+    $pageText = if ($page) { $page.title + ' ' + $page.description } else { '' }
+
+    $reason = ''
+    if ($entry) { $reason = "既知のアプリ「$($entry.name)」へのリンク" }
+    elseif ($svc -and -not $isHub) { $reason = "既知の音楽系サービス「$($svc.name)」" }
+    elseif (Test-WebMusic ($lf.name + ' ' + $urlText)) { $reason = 'ショートカット名・URL に音楽関連の語を含む' }
+    elseif (Test-WebMusic $pageText) { $reason = 'リンク先ページのタイトル・説明に音楽関連の語を含む' }
+    elseif ($folderCtx) { $reason = "音楽系のフォルダ「$folderCtx」に置かれている" }
+
+    if (-not $reason) {
+        [void]$NonMusicLinks.Add([pscustomobject]@{ name = $lf.name; url = $lf.url; path = $lf.path
+            title = $(if ($page) { $page.title } else { '' }); error = $(if ($page) { $page.error } else { '' }) })
+        continue
+    }
+
+    # 同じサービス・同じアプリへのリンクはまとめる
+    if ($entry) { $gk = 'app:' + $entry.id }
+    elseif ($svc -and -not $isHub) { $gk = 'svc:' + $svc.id }
+    else { $gk = 'url:' + $lf.url.ToLowerInvariant().TrimEnd('/') }
+    if (-not $Links.Contains($gk)) {
+        $g = [pscustomobject]@{
+            name = $lf.name; kind = ''; overview = ''; features = @(); usage = @(); officialUrl = ''
+            reason = $reason; pageTitle = ''; pageDescription = ''; pageError = ''; host = $hostName
+            urls = (New-Object System.Collections.ArrayList); shortcuts = (New-Object System.Collections.ArrayList)
+            folders = (New-Object System.Collections.ArrayList); isLocal = $isLocal
+        }
+        if ($entry) {
+            $g.name = $entry.name; $g.kind = $entry.category; $g.overview = $entry.purpose
+            $g.features = @($entry.features); $g.usage = @($entry.usage); $g.officialUrl = $entry.url
+        } elseif ($svc -and -not $isHub) {
+            $g.name = $svc.name; $g.kind = $svc.kind; $g.overview = $svc.overview
+            $g.features = @($svc.features); $g.usage = @($svc.usage); $g.officialUrl = 'https://' + @($svc.domains)[0] + '/'
+        } else {
+            if ($svc) { $g.kind = $svc.kind + ' (' + $svc.name + ')' }
+            elseif ($isLocal) { $g.kind = 'この PC で動く Web 画面 (ローカルサーバー)' }
+            else { $g.kind = 'Web ページ' }
+            if ($page -and $page.title) { $g.name = $page.title }
+            $parts = @()
+            if ($page -and $page.description) { $parts += $page.description }
+            if ($svc) { $parts += $svc.overview }
+            if ($isLocal) { $parts += ('この PC 上のアプリ (ポート ' + $uri.Port + ') の画面です。そのアプリを起動している間だけ開けます。') }
+            $g.overview = ($parts -join ' ')
+            if ($svc) { $g.usage = @($svc.usage) }
+            $g.officialUrl = $lf.url
+        }
+        if ($page) { $g.pageTitle = $page.title; $g.pageDescription = $page.description; $g.pageError = $page.error }
+        $Links[$gk] = $g
+    }
+    $g = $Links[$gk]
+    if (-not $g.urls.Contains($lf.url)) { [void]$g.urls.Add($lf.url) }
+    [void]$g.shortcuts.Add($lf.path)
+    $folder = Get-Parent $lf.path
+    if ($folder -and -not $g.folders.Contains($folder)) { [void]$g.folders.Add($folder) }
+}
+$LinkResult = @($Links.Values | ForEach-Object {
+        [pscustomobject]@{
+            name = $_.name; kind = $_.kind; overview = $_.overview; features = @($_.features); usage = @($_.usage)
+            officialUrl = $_.officialUrl; reason = $_.reason; pageTitle = $_.pageTitle; pageDescription = $_.pageDescription
+            pageError = $_.pageError; host = $_.host; urls = @($_.urls.ToArray()); shortcuts = @($_.shortcuts.ToArray())
+            folders = @($_.folders.ToArray()); isLocal = $_.isLocal
+        }
+    })
+
+# ---------------------------------------------------------------------------
+# 6. プラグイン
 
 Write-Step 'VST / VST3 / CLAP / AAX プラグインを確認しています…'
 $Plugins = New-Object System.Collections.ArrayList
@@ -860,7 +1209,7 @@ function Add-Plugins([string]$Dir, [int]$Depth) {
 foreach ($d in $PluginDirs) { Add-Plugins $d 3 }
 
 # ---------------------------------------------------------------------------
-# 6. HTML を書き出す
+# 7. HTML を書き出す
 
 $Data = [pscustomobject]@{
     scannedAt = (Get-Date).ToString('yyyy-MM-dd HH:mm')
@@ -868,6 +1217,8 @@ $Data = [pscustomobject]@{
     categories = @($Catalog.categories)
     apps = @($Result.ToArray())
     plugins = @($Plugins.ToArray())
+    links = @($LinkResult)
+    nonMusicLinks = @($NonMusicLinks.ToArray())
     roots = [pscustomobject]@{
         desktops = @($Desktops); startMenus = @($StartMenus); programDirs = @($ProgramDirs)
         shallowDirs = @($ShallowDirs); pluginDirs = @($PluginDirs)
@@ -893,6 +1244,6 @@ if ($Errors.Count -gt 0) {
     Write-Host '一部でエラーがありました (HTML の最後にも載せています):' -ForegroundColor Yellow
     foreach ($e in $Errors) { Write-Host "  $e" -ForegroundColor Yellow }
 }
-Write-Host ("{0} 件のアプリ、{1} 件のプラグインを見つけました。" -f $Result.Count, $Plugins.Count)
+Write-Host ("{0} 件のアプリ、{1} 件の音楽系リンク、{2} 件のプラグインを見つけました。" -f $Result.Count, @($LinkResult).Count, $Plugins.Count)
 Write-Host "HTML を作成しました: $out"
 try { Start-Process $out } catch { Write-Host 'ブラウザで開けませんでした。上のファイルをダブルクリックしてください。' }

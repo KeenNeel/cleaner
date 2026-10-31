@@ -73,6 +73,19 @@ def test_folder_keywords():
     assert purpose("Photoshop") is None
 
 
+def test_details_and_web_services():
+    build = load_build()
+    catalog = build.load_catalog()
+    for e in catalog["entries"]:
+        assert e["features"] and e["usage"], e["id"]
+    ids = [w["id"] for w in catalog["webServices"]]
+    assert len(ids) == len(set(ids))
+    for w in catalog["webServices"]:
+        assert w["domains"] and w["overview"] and w["usage"] and w["kind"], w["id"]
+    for k in catalog["webKeywords"]:
+        re.compile(k)
+
+
 def test_template_has_data_placeholder():
     html = (ROOT / "src" / "report.html").read_text(encoding="utf-8")
     assert html.count("__DATA_JSON__") == 1

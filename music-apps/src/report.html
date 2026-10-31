@@ -39,6 +39,10 @@ dd ul { margin:0; padding-left:1.2em; }
 code { font-family: Consolas, "BIZ UDGothic", monospace; font-size:0.85rem; word-break: break-all; }
 details { margin-top: 12px; }
 .note { font-size: 0.88rem; color: var(--muted); }
+ul.bl, ol.bl { margin: 0; padding-left: 1.4em; }
+ul.bl li, ol.bl li { margin: 2px 0; }
+.link { border-left: 4px solid var(--accent); }
+button { padding: 6px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--fg); cursor: pointer; }
 .mv { font-weight: 700; white-space: nowrap; }
 td.mv { text-align: center; }
 .mv-ok { color: #1a7f37; } .mv-warn { color: #b26b00; } .mv-ng { color: #c62828; } .mv-na, .mv-q { color: var(--muted); }
@@ -60,6 +64,8 @@ td.mv { text-align: center; }
 <div id="list"></div>
 <h2>詳細</h2>
 <div id="cards"></div>
+<h2>インターネットショートカット (音楽系のリンク)</h2>
+<div id="links"></div>
 <h2>VST / VST3 / CLAP / AAX プラグイン</h2>
 <div id="plugins"></div>
 <h2>このレポートについて</h2>
@@ -70,6 +76,10 @@ td.mv { text-align: center; }
   <li>Microsoft Store アプリ、および下記以外の場所に置いたポータブル版は検出されないことがあります。</li>
 </ul>
 <details><summary class="note">スキャンした場所</summary><ul class="note" id="roots"></ul></details>
+<h2>調査の依頼</h2>
+<p class="note">「その他」や、内容が分からないリンクについて詳しく調べたいときは、下のボタンで一覧をコピーして開発者 (Claude) に貼り付けてください。Web で調べて、機能・使い方をカタログに追加します。</p>
+<p><button id="copy-unknown" type="button">調査依頼用の一覧をコピー</button> <span id="copy-msg" class="muted"></span></p>
+<textarea id="unknown-text" readonly rows="6" style="width:100%;font-family:Consolas,monospace;font-size:0.8rem"></textarea>
 <div id="errors"></div>
 </main>
 <script type="application/json" id="data">__DATA_JSON__</script>
@@ -96,8 +106,17 @@ try {
     launchNote: str(a.launchNote), location: str(a.location), size: Number(str(a.size)) || 0, sizeNote: str(a.sizeNote),
     launchFile: str(a.launchFile), shortcuts: arr(a.shortcuts).map(str).filter(Boolean), version: str(a.version),
     publisher: str(a.publisher), names: arr(a.names).map(str), kinds: arr(a.kinds).map(str), webUrl: str(a.webUrl),
+    features: arr(a.features).map(str).filter(Boolean), usage: arr(a.usage).map(str).filter(Boolean),
+    localUrls: arr(a.localUrls).map(str).filter(Boolean), packageName: str(a.packageName),
     runtime: str(a.runtime), gpu: str(a.gpu), portable: str(a.portable) || '？', portableReason: str(a.portableReason),
   }));
+  D.links = arr(D.links).map(l => ({
+    name: str(l.name), kind: str(l.kind), overview: str(l.overview), features: arr(l.features).map(str).filter(Boolean),
+    usage: arr(l.usage).map(str).filter(Boolean), officialUrl: str(l.officialUrl), reason: str(l.reason),
+    pageTitle: str(l.pageTitle), pageDescription: str(l.pageDescription), pageError: str(l.pageError), host: str(l.host),
+    urls: arr(l.urls).map(str), shortcuts: arr(l.shortcuts).map(str), folders: arr(l.folders).map(str), isLocal: l.isLocal === true,
+  }));
+  D.nonMusicLinks = arr(D.nonMusicLinks).map(l => ({ name: str(l.name), url: str(l.url), path: str(l.path), title: str(l.title), error: str(l.error) }));
   D.plugins = arr(D.plugins).map(p => ({ name: str(p.name), format: str(p.format), folder: str(p.folder), size: Number(str(p.size)) || 0 }));
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const leaf = p => String(p).replace(/[\\/]+$/, '').split(/[\\/]/).pop();
@@ -112,6 +131,11 @@ try {
   };
   const fileUrl = p => 'file:///' + encodeURI(String(p).replace(/\\/g, '/')).replace(/#/g, '%23').replace(/\?/g, '%3F');
   const fileLink = (p, label) => p ? `<a href="${esc(fileUrl(p))}" title="${esc(p)}">${esc(label || p)}</a>` : '<span class="muted">不明</span>';
+  const bullets = (items, empty, ordered) => items.length
+    ? `<${ordered ? 'ol' : 'ul'} class="bl">${items.map(t => `<li>${esc(t)}</li>`).join('')}</${ordered ? 'ol' : 'ul'}>`
+    : `<span class="muted">${esc(empty)}</span>`;
+  const searchUrl = q => 'https://www.google.com/search?q=' + encodeURIComponent(q + ' github 音楽');
+  const OTHER = (D.categories.length ? D.categories[D.categories.length - 1] : '');
   const PORT = { '○': 'ok', '△': 'warn', '×': 'ng', '－': 'na', '？': 'q' };
   const PORT_LABEL = { '○': '移動しても起動できます', '△': '条件付きで起動できます', '×': '移動すると起動できなくなります', '－': '関係ありません', '？': '判定できません' };
   const KIND = { registry: 'インストール情報', shortcut: 'ショートカット', url: 'Web ショートカット', folder: 'フォルダ' };
@@ -130,6 +154,7 @@ try {
       else steps.push(`${ext === '.bat' || ext === '.cmd' ? 'バッチファイル' : '起動ファイル'}「${leaf(a.launchFile)}」をダブルクリック`);
     }
     if (!steps.length && a.webUrl) steps.push(`ブラウザで ${a.webUrl} を開く`);
+    if (!steps.length && a.usage && a.usage.length && a.location) steps.push('起動用のファイルはありません。下の「使い方」の手順 (コマンド) で起動します');
     if (!steps.length) steps.push(a.category && a.category.indexOf('プラグイン') >= 0 ? 'DAW を起動し、プラグインとして読み込む' : 'スタートメニューからアプリ名で検索して起動');
     let text = steps.join(' / ');
     if (a.launchNote) text += '。' + a.launchNote;
@@ -147,7 +172,7 @@ try {
   const ptotal = plugins.reduce((s, p) => s + (Number(p.size) || 0), 0);
   document.getElementById('summary').innerHTML = [
     ['アプリ', apps.length + ' 件'], ['アプリ合計容量', human(total)],
-    ['プラグイン', plugins.length + ' 件'], ['プラグイン合計容量', human(ptotal)],
+    ['音楽系リンク', D.links.length + ' 件'], ['プラグイン', plugins.length + ' 件'], ['プラグイン合計容量', human(ptotal)],
   ].map(([k, v]) => `<div class="stat">${k}<b>${v}</b></div>`).join('');
 
   const cats = arr(D.categories).filter(c => apps.some(a => a.category === c));
@@ -175,7 +200,8 @@ ${apps.map((a, i) => `<tr data-cat="${esc(a.category)}" data-search="${esc(searc
   <header><h3>${esc(a.name)}</h3><span class="tag">${esc(a.category)}</span><span class="size">${sizeHtml(a)}</span></header>
   ${meta ? `<p class="meta">${esc(meta)}</p>` : ''}
   <dl>
-    <dt>用途</dt><dd>${esc(a.purpose)}</dd>
+    <dt>概要</dt><dd>${esc(a.purpose)}${a.packageName ? `<br><span class="muted">パッケージ名: ${esc(a.packageName)}</span>` : ''}</dd>
+    <dt>主な機能</dt><dd>${bullets(a.features, '情報なし')}</dd>
     <dt>公式ページ</dt><dd>${a.url ? `<a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.url)}</a>` : '<span class="muted">不明</span>'}</dd>
     <dt>容量</dt><dd>${sizeHtml(a)}</dd>
     <dt>起動方法</dt><dd>${esc(a.method)}</dd>
@@ -183,12 +209,56 @@ ${apps.map((a, i) => `<tr data-cat="${esc(a.category)}" data-search="${esc(searc
     <dt>フォルダ移動</dt><dd><span class="mv mv-${PORT[a.portable] || 'q'}">${esc(a.portable)} ${esc(PORT_LABEL[a.portable] || '')}</span><br>${esc(a.portableReason)}</dd>
     <dt>起動ファイル</dt><dd><code>${a.launchFile ? esc(a.launchFile) : '不明'}</code></dd>
     <dt>インストール先</dt><dd>${fileLink(a.location)}</dd>
-    <dt>簡単な利用方法</dt><dd>${esc(a.howto)}</dd>
+    <dt>使い方</dt><dd>${a.usage.length ? bullets(a.usage, '', true) : esc(a.howto)}${a.localUrls.length ? `<p class="muted">画面のアドレス (推定): ${a.localUrls.map(u => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(u)}</a>`).join(' / ')}</p>` : ''}</dd>
+    ${a.category === OTHER ? `<dt>Web で調べる</dt><dd><a href="${esc(searchUrl(a.packageName || a.name))}" target="_blank" rel="noopener">「${esc(a.packageName || a.name)}」を検索</a></dd>` : ''}
     ${sc ? `<dt>ショートカット</dt><dd><ul>${sc}</ul></dd>` : ''}
     <dt>検出元</dt><dd class="muted">${esc(kinds)} (${esc(arr(a.names).slice(0, 4).join(' / '))})</dd>
   </dl>
 </article>`;
   }).join('');
+
+  // インターネットショートカット
+  const links = D.links.slice().sort((a, b) => a.kind.localeCompare(b.kind, 'ja') || a.name.localeCompare(b.name, 'ja'));
+  const extLink = u => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(u)}</a>`;
+  document.getElementById('links').innerHTML = (links.length ? `
+<p class="note">デスクトップ・ユーザーフォルダ・C ドライブ・お気に入りの .url ファイルと、ブラウザの「アプリ」ショートカットを調べ、リンク先から音楽系かどうかを判定しました。同じサービスへのリンクは 1 つにまとめています。</p>
+<table id="link-table"><thead><tr><th>名前</th><th>種類</th><th>リンク数</th><th>判定理由</th></tr></thead><tbody>
+${links.map((l, i) => `<tr data-search="${esc((l.name + ' ' + l.kind + ' ' + l.overview).toLowerCase())}"><td><a href="#link-${i}">${esc(l.name)}</a></td><td>${esc(l.kind)}</td><td class="num" data-v="${l.shortcuts.length}">${l.shortcuts.length}</td><td>${esc(l.reason)}</td></tr>`).join('')}
+</tbody></table>
+${links.map((l, i) => `
+<article id="link-${i}" class="app link" data-search="${esc((l.name + ' ' + l.kind + ' ' + l.overview).toLowerCase())}">
+  <header><h3>${esc(l.name)}</h3><span class="tag">${esc(l.kind)}</span></header>
+  <dl>
+    <dt>概要</dt><dd>${esc(l.overview || l.pageDescription || '説明を取得できませんでした')}</dd>
+    <dt>主な機能</dt><dd>${bullets(l.features, l.pageTitle ? 'リンク先のタイトル: ' + l.pageTitle : '情報なし')}</dd>
+    <dt>使い方</dt><dd>${bullets(l.usage, l.isLocal ? 'このアドレスの画面を出すアプリを先に起動してから開いてください。' : 'リンクを開いてページの案内に従ってください。', true)}</dd>
+    <dt>公式ページ</dt><dd>${l.officialUrl ? extLink(l.officialUrl) : '<span class="muted">不明</span>'}</dd>
+    <dt>リンク先</dt><dd><ul>${l.urls.slice(0, 10).map(u => `<li>${extLink(u)}</li>`).join('')}</ul></dd>
+    <dt>ショートカット</dt><dd><ul>${l.shortcuts.slice(0, 10).map(p => `<li>${fileLink(p, leaf(p))}</li>`).join('')}${l.shortcuts.length > 10 ? `<li class="muted">ほか ${l.shortcuts.length - 10} 件</li>` : ''}</ul></dd>
+    <dt>置き場所</dt><dd>${l.folders.slice(0, 5).map(f => fileLink(f)).join('<br>')}</dd>
+    <dt>判定理由</dt><dd class="muted">${esc(l.reason)}${l.pageTitle ? ` / ページのタイトル: ${esc(l.pageTitle)}` : ''}${l.pageError ? ` / ページを読めませんでした: ${esc(l.pageError)}` : ''}</dd>
+    ${(!l.features.length && !l.isLocal) ? `<dt>Web で調べる</dt><dd><a href="${esc(searchUrl(l.name))}" target="_blank" rel="noopener">「${esc(l.name)}」を検索</a></dd>` : ''}
+  </dl>
+</article>`).join('')}` : '<p class="muted">音楽系のインターネットショートカットは見つかりませんでした。</p>') +
+  (D.nonMusicLinks.length ? `
+<details><summary class="note">音楽系ではないと判定したリンク (${D.nonMusicLinks.length} 件)</summary>
+<table><thead><tr><th>名前</th><th>URL</th><th>ページのタイトル</th><th>場所</th></tr></thead><tbody>
+${D.nonMusicLinks.slice(0, 500).map(l => `<tr><td>${esc(l.name)}</td><td>${extLink(l.url)}</td><td>${esc(l.title || l.error)}</td><td>${fileLink(l.path, leaf(l.path))}</td></tr>`).join('')}
+</tbody></table></details>` : '');
+
+  // 調査依頼用のテキスト
+  const unknown = [];
+  apps.filter(a => a.category === OTHER).forEach(a => unknown.push(
+    `- アプリ: ${a.name}${a.packageName ? ' (パッケージ名 ' + a.packageName + ')' : ''} / 場所: ${a.location || '不明'} / 実行環境: ${a.runtime} / 公式?: ${a.url || '不明'} / 概要: ${a.purpose}`));
+  links.filter(l => !l.features.length).forEach(l => unknown.push(`- リンク: ${l.name} / ${l.urls[0] || ''} / タイトル: ${l.pageTitle || '不明'}`));
+  const ta = document.getElementById('unknown-text');
+  ta.value = unknown.length ? '次のアプリ・リンクが何か、Web で調べて機能・使い方を教えてください。\n' + unknown.join('\n') : '調査が必要な項目はありません。';
+  document.getElementById('copy-unknown').addEventListener('click', () => {
+    ta.select();
+    const done = () => { document.getElementById('copy-msg').textContent = 'コピーしました'; };
+    if (navigator.clipboard) navigator.clipboard.writeText(ta.value).then(done, () => { document.execCommand('copy'); done(); });
+    else { document.execCommand('copy'); done(); }
+  });
 
   document.getElementById('plugins').innerHTML = plugins.length ? `
 <p class="note">DAW から読み込んで使う音源・エフェクトです。単体では起動しません (DAW のプラグイン一覧から選びます)。</p>
@@ -211,8 +281,8 @@ ${plugins.map(p => `<tr><td>${esc(p.name)}</td><td>${esc(p.format)}</td><td clas
   const original = Array.from(cards.children);
   function apply() {
     const text = q.value.trim().toLowerCase(), c = cat.value;
-    document.querySelectorAll('#cards .app, #summary-table tbody tr').forEach(el => {
-      el.style.display = (!c || el.dataset.cat === c) && (!text || el.dataset.search.includes(text)) ? '' : 'none';
+    document.querySelectorAll('#cards .app, #summary-table tbody tr, #links .link, #link-table tbody tr').forEach(el => {
+      el.style.display = (!c || !el.dataset.cat || el.dataset.cat === c) && (!text || (el.dataset.search || '').includes(text)) ? '' : 'none';
     });
   }
   function reorder() {

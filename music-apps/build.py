@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import json
+import runpy
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -30,8 +31,22 @@ goto :EOF
 """
 
 
-def build() -> str:
+def load_catalog() -> dict:
+    """catalog.json に、details_apps.py (機能・使い方) と details_web.py (Web サービス) を合わせる。"""
     catalog = json.loads((SRC / "catalog.json").read_text(encoding="utf-8"))
+    apps = runpy.run_path(str(SRC / "details_apps.py"))["APP_DETAILS"]
+    web = runpy.run_path(str(SRC / "details_web.py"))
+    for e in catalog["entries"]:
+        features, usage = apps.get(e["id"], ([], []))
+        e["features"] = list(features)
+        e["usage"] = list(usage)
+    catalog["webServices"] = web["WEB_SERVICES"]
+    catalog["webKeywords"] = web["WEB_MUSIC_KEYWORDS"]
+    return catalog
+
+
+def build() -> str:
+    catalog = load_catalog()
     catalog_json = json.dumps(catalog, ensure_ascii=False, indent=1)
     template = (SRC / "report.html").read_text(encoding="utf-8")
     script = (SRC / "scan.ps1").read_text(encoding="utf-8")
