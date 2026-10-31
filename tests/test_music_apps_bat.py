@@ -53,4 +53,4 @@ def test_catalog():
 
 def test_template_has_data_placeholder():
     html = (ROOT / "src" / "report.html").read_text(encoding="utf-8")
-    assert html.count("/*__DATA__*/null") == 1
+    assert html.count("__DATA_JSON__") == 1

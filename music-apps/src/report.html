@@ -69,12 +69,32 @@ details { margin-top: 12px; }
 <details><summary class="note">スキャンした場所</summary><ul class="note" id="roots"></ul></details>
 <div id="errors"></div>
 </main>
-<script>const DATA = /*__DATA__*/null;</script>
+<script type="application/json" id="data">__DATA_JSON__</script>
 <script>
+function showFatal(msg) {
+  const box = document.createElement('div');
+  box.style.cssText = 'background:#fde8e8;color:#8a1c1c;border:1px solid #f5b5b5;border-radius:10px;padding:12px 16px;margin:16px 0;white-space:pre-wrap';
+  box.textContent = '表示中にエラーが発生しました。この枠の文章をコピーして開発者に送ってください。\n\n' + msg;
+  document.querySelector('main').insertBefore(box, document.getElementById('summary'));
+}
+try {
 (function () {
   'use strict';
-  const D = DATA || { apps: [], plugins: [], categories: [], roots: {}, errors: [] };
-  const arr = v => (v == null ? [] : Array.isArray(v) ? v : [v]);
+  // Windows PowerShell 5.1 は配列を {"value":[...],"Count":n} にすることがあるので、どちらでも受け付ける
+  const arr = v => (v == null ? [] : Array.isArray(v) ? v : (typeof v === 'object' && Array.isArray(v.value)) ? v.value : [v]);
+  const str = v => (v == null ? '' : typeof v === 'object' && !Array.isArray(v) && 'value' in v ? String(v.value) : Array.isArray(v) ? String(v.length ? v[0] : '') : String(v));
+  let raw = document.getElementById('data').textContent.trim();
+  if (raw === '__DATA' + '_JSON__') raw = 'null';
+  const D = JSON.parse(raw) || { apps: [], plugins: [], categories: [], roots: {}, errors: ['データが埋め込まれていません'] };
+  D.categories = arr(D.categories).map(str);
+  D.errors = arr(D.errors).map(str);
+  D.apps = arr(D.apps).map(a => ({
+    name: str(a.name), category: str(a.category), purpose: str(a.purpose), url: str(a.url), howto: str(a.howto),
+    launchNote: str(a.launchNote), location: str(a.location), size: Number(str(a.size)) || 0, sizeNote: str(a.sizeNote),
+    launchFile: str(a.launchFile), shortcuts: arr(a.shortcuts).map(str).filter(Boolean), version: str(a.version),
+    publisher: str(a.publisher), names: arr(a.names).map(str), kinds: arr(a.kinds).map(str), webUrl: str(a.webUrl),
+  }));
+  D.plugins = arr(D.plugins).map(p => ({ name: str(p.name), format: str(p.format), folder: str(p.folder), size: Number(str(p.size)) || 0 }));
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const leaf = p => String(p).replace(/[\\/]+$/, '').split(/[\\/]/).pop();
   const stem = p => leaf(p).replace(/\.[^.]+$/, '');
@@ -112,7 +132,7 @@ details { margin-top: 12px; }
 
   const order = {};
   arr(D.categories).forEach((c, i) => { order[c] = i; });
-  const apps = arr(D.apps).slice().sort((a, b) => ((order[a.category] ?? 99) - (order[b.category] ?? 99)) || a.name.localeCompare(b.name, 'ja'));
+  const apps = arr(D.apps).slice().sort((a, b) => ((a.category in order ? order[a.category] : 99) - (b.category in order ? order[b.category] : 99)) || a.name.localeCompare(b.name, 'ja'));
   const plugins = arr(D.plugins).slice().sort((a, b) => a.format.localeCompare(b.format) || a.name.localeCompare(b.name, 'ja'));
   apps.forEach(a => { a.method = launchMethod(a); });
 
@@ -208,6 +228,9 @@ ${plugins.map(p => `<tr><td>${esc(p.name)}</td><td>${esc(p.format)}</td><td clas
     }));
   });
 })();
+} catch (e) {
+  showFatal((e && e.stack) || String(e));
+}
 </script>
 </body>
 </html>

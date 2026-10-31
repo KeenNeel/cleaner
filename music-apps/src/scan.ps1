@@ -120,6 +120,74 @@ function New-Source($Kind, $Name) {
     }
 }
 
+# JSON に変換する。Windows PowerShell 5.1 の ConvertTo-Json は配列を {"value":[...],"Count":n} に
+# してしまうことや、深さ・長さの制限で失敗することがあるため使わない。
+function ConvertTo-JsonText($Value) {
+    $sb = New-Object Text.StringBuilder
+    Add-JsonValue $sb $Value
+    return $sb.ToString()
+}
+
+function Add-JsonString([Text.StringBuilder]$Sb, [string]$Text) {
+    $e = $Text.Replace('\', '\\').Replace('"', '\"')
+    # 制御文字と < > & は \uXXXX にする (HTML の <script> 内に安全に埋め込むため)
+    $e = [regex]::Replace($e, '[\x00-\x1f<>&\u2028\u2029]', { param($m) '\u{0:x4}' -f [int][char]$m.Value })
+    [void]$Sb.Append('"').Append($e).Append('"')
+}
+
+function Add-JsonValue([Text.StringBuilder]$Sb, $Value) {
+    if ($null -eq $Value) { [void]$Sb.Append('null'); return }
+    $base = $Value
+    if ($Value -is [Management.Automation.PSObject]) { $base = $Value.PSObject.BaseObject }
+    if ($base -is [string] -or $base -is [char]) { Add-JsonString $Sb ([string]$base); return }
+    if ($base -is [bool]) { if ($base) { [void]$Sb.Append('true') } else { [void]$Sb.Append('false') }; return }
+    if ($base -is [int] -or $base -is [long] -or $base -is [double] -or $base -is [decimal] -or $base -is [single] -or
+        $base -is [int16] -or $base -is [byte] -or $base -is [uint32] -or $base -is [uint64]) {
+        $n = [Convert]::ToString($base, [Globalization.CultureInfo]::InvariantCulture)
+        if ($n -match '^(NaN|-?Infinity|∞|-∞)$') { $n = 'null' }
+        [void]$Sb.Append($n)
+        return
+    }
+    if ($base -is [Management.Automation.PSCustomObject]) {
+        [void]$Sb.Append('{')
+        $first = $true
+        foreach ($prop in $Value.PSObject.Properties) {
+            if (-not $first) { [void]$Sb.Append(',') }
+            $first = $false
+            Add-JsonString $Sb $prop.Name
+            [void]$Sb.Append(':')
+            Add-JsonValue $Sb $prop.Value
+        }
+        [void]$Sb.Append('}')
+        return
+    }
+    if ($base -is [Collections.IDictionary]) {
+        [void]$Sb.Append('{')
+        $first = $true
+        foreach ($k in $base.Keys) {
+            if (-not $first) { [void]$Sb.Append(',') }
+            $first = $false
+            Add-JsonString $Sb ([string]$k)
+            [void]$Sb.Append(':')
+            Add-JsonValue $Sb $base[$k]
+        }
+        [void]$Sb.Append('}')
+        return
+    }
+    if ($base -is [Collections.IEnumerable]) {
+        [void]$Sb.Append('[')
+        $first = $true
+        foreach ($item in $base) {
+            if (-not $first) { [void]$Sb.Append(',') }
+            $first = $false
+            Add-JsonValue $Sb $item
+        }
+        [void]$Sb.Append(']')
+        return
+    }
+    Add-JsonString $Sb ([string]$base)
+}
+
 # ---------------------------------------------------------------------------
 # 調べる場所
 
@@ -419,13 +487,15 @@ foreach ($app in $Apps.Values) {
             Select-Object -First 1
     }
 
+    $launch = @($launch | Where-Object { $_ } | ForEach-Object { [string]$_ }) | Select-Object -First 1
+
     # 容量
     $size = $null; $sizeNote = ''
-    if ($location) { $size = Get-Size $location; $sizeNote = 'フォルダ実測' }
+    if ($location) { $size = [int64](@(Get-Size $location) | Select-Object -Last 1); $sizeNote = 'フォルダ実測' }
     if (-not $size) {
         $reg = @($src | Where-Object { $_.size } | ForEach-Object { $_.size })
         if ($reg.Count -gt 0) {
-            $size = ($reg | Measure-Object -Maximum).Maximum
+            $size = [int64](($reg | Measure-Object -Maximum).Maximum)
             $sizeNote = 'インストール情報の推定値'
         } elseif (@($src | Where-Object { $_.kind -ne 'url' }).Count -eq 0) {
             $size = $null
@@ -482,9 +552,14 @@ $Data = [pscustomobject]@{
     }
     errors = @($Errors.ToArray())
 }
-$json = ConvertTo-Json -InputObject $Data -Depth 6 -Compress
-$json = $json.Replace('</', '<\/')
-$html = $Template.Replace('/*__DATA__*/null', $json)
+try {
+    $json = ConvertTo-JsonText $Data
+} catch {
+    Write-Host "データの変換でエラーが発生しました: $_" -ForegroundColor Red
+    $msg = ConvertTo-JsonText ([string]$_)
+    $json = '{"apps":[],"plugins":[],"categories":[],"roots":{},"errors":[' + $msg + ']}'
+}
+$html = $Template.Replace('__DATA_JSON__', $json)
 
 $desktop = [Environment]::GetFolderPath('Desktop')
 if (-not $desktop -or -not (Test-Exists $desktop -Folder)) { $desktop = (Get-Location).Path }
@@ -492,6 +567,10 @@ $out = Join-Path $desktop '音楽アプリ一覧.html'
 [IO.File]::WriteAllText($out, $html, (New-Object Text.UTF8Encoding($false)))
 
 Write-Host ''
+if ($Errors.Count -gt 0) {
+    Write-Host '一部でエラーがありました (HTML の最後にも載せています):' -ForegroundColor Yellow
+    foreach ($e in $Errors) { Write-Host "  $e" -ForegroundColor Yellow }
+}
 Write-Host ("{0} 件のアプリ、{1} 件のプラグインを見つけました。" -f $Result.Count, $Plugins.Count)
 Write-Host "HTML を作成しました: $out"
 try { Start-Process $out } catch { Write-Host 'ブラウザで開けませんでした。上のファイルをダブルクリックしてください。' }
