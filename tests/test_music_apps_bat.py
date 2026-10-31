@@ -47,8 +47,30 @@ def test_catalog():
     assert find("Synthesizer V Studio 2 Pro") == "synthv"
     assert find("ComfyUI_windows_portable") == "comfyui"
     assert find("iZotope RX 11 Audio Editor") == "rx"
+    assert find("ace_step") == "acestep"
+    assert find("ACE-Step-1.5") == "acestep"
+    assert find("ChordMiniApp") == "chordmini"
+    assert find("TAIP") == "taip"
     assert find("VitalSource Bookshelf") is None
     assert find("Google Chrome") is None
+
+
+def test_folder_keywords():
+    catalog = json.loads((ROOT / "src" / "catalog.json").read_text(encoding="utf-8"))
+    rules = [(re.compile(k, re.I), v) for k, v in catalog["folderKeywords"].items()]
+
+    def purpose(name):
+        t = re.sub(r"_+", " ", name).lower()
+        return next((v for r, v in rules if r.search(t)), None)
+
+    assert "歌詞" in purpose("LyricsAligner")
+    assert "歌詞" in purpose("my_lyrics_tool")
+    assert "テープ" in purpose("Tape")
+    assert "テープ" in purpose("tape_recorder")
+    assert "テープ" in purpose("TapeMachine")
+    assert purpose("Tapestry") is None
+    assert "コード" in purpose("chord-detector")
+    assert purpose("Photoshop") is None
 
 
 def test_template_has_data_placeholder():

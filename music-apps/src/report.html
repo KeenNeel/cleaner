@@ -25,7 +25,7 @@ a { color: var(--accent); word-break: break-all; }
 .toolbar input { flex: 1; min-width: 220px; }
 table { width:100%; border-collapse: collapse; background:var(--card); border:1px solid var(--line); font-size:0.92rem; }
 th, td { padding:7px 10px; border-bottom:1px solid var(--line); text-align:left; vertical-align: top; }
-th { cursor:pointer; user-select:none; background:var(--tag); }
+th { cursor:pointer; user-select:none; background:var(--tag); white-space:nowrap; }
 td.num { text-align:right; white-space:nowrap; }
 .app { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 18px; margin:12px 0; }
 .app header { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
@@ -39,6 +39,9 @@ dd ul { margin:0; padding-left:1.2em; }
 code { font-family: Consolas, "BIZ UDGothic", monospace; font-size:0.85rem; word-break: break-all; }
 details { margin-top: 12px; }
 .note { font-size: 0.88rem; color: var(--muted); }
+.mv { font-weight: 700; white-space: nowrap; }
+td.mv { text-align: center; }
+.mv-ok { color: #1a7f37; } .mv-warn { color: #b26b00; } .mv-ng { color: #c62828; } .mv-na, .mv-q { color: var(--muted); }
 @media (max-width: 640px) { dl { grid-template-columns: 1fr; } dt { margin-top:6px; } }
 @media print { .toolbar { display:none; } .app { break-inside: avoid; } }
 </style>
@@ -93,6 +96,7 @@ try {
     launchNote: str(a.launchNote), location: str(a.location), size: Number(str(a.size)) || 0, sizeNote: str(a.sizeNote),
     launchFile: str(a.launchFile), shortcuts: arr(a.shortcuts).map(str).filter(Boolean), version: str(a.version),
     publisher: str(a.publisher), names: arr(a.names).map(str), kinds: arr(a.kinds).map(str), webUrl: str(a.webUrl),
+    runtime: str(a.runtime), gpu: str(a.gpu), portable: str(a.portable) || '？', portableReason: str(a.portableReason),
   }));
   D.plugins = arr(D.plugins).map(p => ({ name: str(p.name), format: str(p.format), folder: str(p.folder), size: Number(str(p.size)) || 0 }));
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -108,6 +112,8 @@ try {
   };
   const fileUrl = p => 'file:///' + encodeURI(String(p).replace(/\\/g, '/')).replace(/#/g, '%23').replace(/\?/g, '%3F');
   const fileLink = (p, label) => p ? `<a href="${esc(fileUrl(p))}" title="${esc(p)}">${esc(label || p)}</a>` : '<span class="muted">不明</span>';
+  const PORT = { '○': 'ok', '△': 'warn', '×': 'ng', '－': 'na', '？': 'q' };
+  const PORT_LABEL = { '○': '移動しても起動できます', '△': '条件付きで起動できます', '×': '移動すると起動できなくなります', '－': '関係ありません', '？': '判定できません' };
   const KIND = { registry: 'インストール情報', shortcut: 'ショートカット', url: 'Web ショートカット', folder: 'フォルダ' };
 
   function launchMethod(a) {
@@ -148,12 +154,14 @@ try {
   document.getElementById('cat').insertAdjacentHTML('beforeend', cats.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join(''));
 
   const sizeHtml = a => a.size ? `${human(a.size)} <span class="muted">(${esc(a.sizeNote)})</span>` : `<span class="muted">${esc(a.sizeNote || '不明')}</span>`;
-  const searchText = a => [a.name, a.category, a.purpose].concat(arr(a.names)).join(' ').toLowerCase();
+  const searchText = a => [a.name, a.category, a.purpose, a.runtime].concat(arr(a.names)).join(' ').toLowerCase();
 
   document.getElementById('list').innerHTML = apps.length ? `
-<table id="summary-table"><thead><tr><th>アプリ</th><th>カテゴリ</th><th>容量</th><th>起動ファイル</th></tr></thead><tbody>
+<p class="note">「移動」は、アプリのフォルダを別の場所へ移しても起動できるかの目安です。 ○ 移動しても動く / △ 条件付きで動く / × 移動すると動かない / － 関係なし (Web サービス) / ？ 判定できない</p>
+<table id="summary-table"><thead><tr><th>アプリ</th><th>カテゴリ</th><th>実行環境</th><th>移動</th><th>容量</th><th>起動ファイル</th></tr></thead><tbody>
 ${apps.map((a, i) => `<tr data-cat="${esc(a.category)}" data-search="${esc(searchText(a))}">
-<td><a href="#app-${i}">${esc(a.name)}</a></td><td>${esc(a.category)}</td>
+<td><a href="#app-${i}">${esc(a.name)}</a></td><td>${esc(a.category)}</td><td>${esc(a.runtime || '-')}</td>
+<td class="mv mv-${PORT[a.portable] || 'q'}" title="${esc(a.portableReason)}">${esc(a.portable)}</td>
 <td class="num" data-v="${Number(a.size) || 0}">${a.size ? human(a.size) : '-'}</td>
 <td><code>${a.launchFile ? esc(leaf(a.launchFile)) : '-'}</code></td></tr>`).join('')}
 </tbody></table>` : '<p>音楽関連のアプリは見つかりませんでした。</p>';
@@ -171,6 +179,8 @@ ${apps.map((a, i) => `<tr data-cat="${esc(a.category)}" data-search="${esc(searc
     <dt>公式ページ</dt><dd>${a.url ? `<a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.url)}</a>` : '<span class="muted">不明</span>'}</dd>
     <dt>容量</dt><dd>${sizeHtml(a)}</dd>
     <dt>起動方法</dt><dd>${esc(a.method)}</dd>
+    <dt>実行環境</dt><dd>${esc(a.runtime || '不明')}${a.gpu ? `<br><span class="muted">GPU: ${esc(a.gpu)}</span>` : ''}</dd>
+    <dt>フォルダ移動</dt><dd><span class="mv mv-${PORT[a.portable] || 'q'}">${esc(a.portable)} ${esc(PORT_LABEL[a.portable] || '')}</span><br>${esc(a.portableReason)}</dd>
     <dt>起動ファイル</dt><dd><code>${a.launchFile ? esc(a.launchFile) : '不明'}</code></dd>
     <dt>インストール先</dt><dd>${fileLink(a.location)}</dd>
     <dt>簡単な利用方法</dt><dd>${esc(a.howto)}</dd>

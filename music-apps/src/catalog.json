@@ -3,6 +3,7 @@
   "AI作曲・音楽生成",
   "AI歌声・音声合成",
   "AI音源分離・声質変換",
+  "AI音楽解析・歌詞",
   "DAW (作曲・録音・編集)",
   "楽譜作成・MIDI",
   "波形編集・録音・変換",
@@ -11,6 +12,24 @@
   "その他 (音楽関連の可能性)"
  ],
  "entries": [
+  {
+   "id": "chordmini",
+   "name": "ChordMini",
+   "category": "AI音楽解析・歌詞",
+   "purpose": "曲のコード進行・ビート・歌詞を AI で解析し、ギター/ピアノのコード表示や歌詞の同期表示をするオープンソースアプリ。YouTube のリンクや音声ファイルに対応。",
+   "url": "https://github.com/ptnghia-j/ChordMiniApp",
+   "match": [
+    "chord[\\s_-]?mini"
+   ],
+   "exes": [
+    "start.bat",
+    "run.bat",
+    "start-dev.bat",
+    "start.ps1"
+   ],
+   "howto": "Python バックエンドとフロントエンド (npm run dev) を起動 → ブラウザで http://localhost:3000 を開く → YouTube の URL か音声ファイルを指定して解析 → コード譜・ビート・歌詞を確認。",
+   "launch_note": "起動後に http://localhost:3000 をブラウザで開きます (Docker 版は docker compose up)。"
+  },
   {
    "id": "suno",
    "name": "Suno",
@@ -76,12 +95,14 @@
    "purpose": "歌詞とタグから歌入り楽曲を生成するオープンソースの音楽生成モデル。",
    "url": "https://github.com/ace-step/ACE-Step",
    "match": [
-    "ace[\\s_-]?step"
+    "ace[\\s_.-]?step"
    ],
    "exes": [
-    "run.bat",
+    "acestep.exe",
     "start.bat",
-    "acestep.exe"
+    "run.bat",
+    "acestep-gui.bat",
+    "app.py"
    ],
    "howto": "起動バッチで Gradio 画面を開き、Tags (ジャンル等) と Lyrics を入力して Generate。",
    "launch_note": "起動後に表示される http://127.0.0.1:7865 等をブラウザで開きます。"
@@ -1248,6 +1269,50 @@
    ],
    "howto": "機器を USB 接続 → 設定アプリで入出力・サンプルレートを確認 → DAW のオーディオ設定でその機器の ASIO ドライバを選ぶ。",
    "launch_note": ""
+  },
+  {
+   "id": "taip",
+   "name": "TAIP (Baby Audio)",
+   "category": "音源・プラグイン・管理ツール",
+   "purpose": "AI でアナログテープの質感 (サチュレーション) を再現するテープ系エフェクト プラグイン。",
+   "url": "https://babyaud.io/taip-plugin",
+   "match": [
+    "\\btaip\\b",
+    "baby\\s?audio"
+   ],
+   "howto": "DAW のトラックやマスターにエフェクトとして挿す → Drive で歪み具合、Character でテープらしさを調整。",
+   "exes": [],
+   "launch_note": ""
+  },
+  {
+   "id": "pinokio",
+   "name": "Pinokio",
+   "category": "AI作曲・音楽生成",
+   "purpose": "AI アプリ (ACE-Step・RVC・音声合成など) をワンクリックでインストール・起動できるランチャー。",
+   "url": "https://github.com/pinokiocomputer/pinokio",
+   "match": [
+    "^pinokio\\b"
+   ],
+   "exes": [
+    "pinokio.exe"
+   ],
+   "howto": "Pinokio を起動 → Discover からアプリを探して Install → 一覧から Start を押すと、そのアプリの画面が開く。",
+   "launch_note": "個々の AI アプリは Pinokio の画面から起動します。"
+  },
+  {
+   "id": "stabilitymatrix",
+   "name": "Stability Matrix",
+   "category": "AI作曲・音楽生成",
+   "purpose": "ComfyUI などの生成 AI ツールをまとめてインストール・管理・起動できるランチャー。",
+   "url": "https://github.com/LykosAI/StabilityMatrix",
+   "match": [
+    "stability\\s?matrix"
+   ],
+   "exes": [
+    "stabilitymatrix.exe"
+   ],
+   "howto": "StabilityMatrix.exe を起動 → Packages からツールを追加 → Launch で起動。モデルは共有フォルダで一括管理される。",
+   "launch_note": ""
   }
  ],
  "generic": [
@@ -1297,5 +1362,14 @@
   "epic games",
   "xbox",
   "discord"
- ]
+ ],
+ "folderKeywords": {
+  "lyric|歌詞": "歌詞関連のツール (フォルダ名からの推定)",
+  "chord|コード進行": "コード解析・作曲支援のツール (フォルダ名からの推定)",
+  "\\btape(?!str)|テープ": "テープ・録音関連のツール (フォルダ名からの推定)",
+  "melod|メロディ": "メロディ生成・解析のツール (フォルダ名からの推定)",
+  "vocal|voice|singing|\\bsing\\b|svc|tts|ボーカル|歌声|音声": "歌声・音声関連のツール (フォルダ名からの推定)",
+  "\\bstems?\\b|separat|分離": "音源分離のツール (フォルダ名からの推定)",
+  "music|song|beat|midi|audio|sound|karaoke|作曲|音楽|カラオケ": "音楽関連のツール (フォルダ名からの推定)"
+ }
 }
