@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>音楽生成アプリ・関連ソフト一覧</title>
+<style>
+:root { --bg:#f6f7fb; --card:#fff; --fg:#1d2330; --muted:#6b7280; --line:#e3e6ee; --accent:#5b5bd6; --tag:#eef0ff; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#14161c; --card:#1d2029; --fg:#e7e9ee; --muted:#9aa1ad; --line:#2c303b; --accent:#9b9bff; --tag:#2a2d48; }
+}
+* { box-sizing: border-box; }
+body { margin:0; font-family: "Segoe UI", "Yu Gothic UI", "Meiryo", sans-serif; background:var(--bg); color:var(--fg); line-height:1.6; }
+main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
+h1 { font-size: 1.6rem; margin: 0 0 4px; }
+h2 { font-size: 1.2rem; margin: 36px 0 12px; border-bottom: 2px solid var(--line); padding-bottom: 4px; }
+h3 { font-size: 1.1rem; margin: 0; }
+a { color: var(--accent); word-break: break-all; }
+.muted { color: var(--muted); }
+.summary { display:flex; gap:12px; flex-wrap:wrap; margin: 16px 0; }
+.stat { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 16px; min-width:160px; }
+.stat b { display:block; font-size:1.4rem; }
+.toolbar { position: sticky; top:0; background:var(--bg); padding:10px 0; display:flex; gap:8px; flex-wrap:wrap; z-index:1; }
+.toolbar input, .toolbar select { padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--fg); font-size:0.95rem; }
+.toolbar input { flex: 1; min-width: 220px; }
+table { width:100%; border-collapse: collapse; background:var(--card); border:1px solid var(--line); font-size:0.92rem; }
+th, td { padding:7px 10px; border-bottom:1px solid var(--line); text-align:left; vertical-align: top; }
+th { cursor:pointer; user-select:none; background:var(--tag); }
+td.num { text-align:right; white-space:nowrap; }
+.app { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 18px; margin:12px 0; }
+.app header { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.app .size { margin-left:auto; font-weight:600; }
+.tag { background:var(--tag); border-radius:999px; padding:1px 10px; font-size:0.8rem; }
+.meta { margin: 2px 0 0; color: var(--muted); font-size: 0.85rem; }
+dl { display:grid; grid-template-columns: 8.5em 1fr; gap: 4px 12px; margin: 12px 0 0; }
+dt { color:var(--muted); font-size:0.88rem; }
+dd { margin:0; }
+dd ul { margin:0; padding-left:1.2em; }
+code { font-family: Consolas, "BIZ UDGothic", monospace; font-size:0.85rem; word-break: break-all; }
+details { margin-top: 12px; }
+.note { font-size: 0.88rem; color: var(--muted); }
+@media (max-width: 640px) { dl { grid-template-columns: 1fr; } dt { margin-top:6px; } }
+@media print { .toolbar { display:none; } .app { break-inside: avoid; } }
+</style>
+</head>
+<body>
+<main>
+<h1>🎵 音楽生成アプリ・関連ソフト一覧</h1>
+<p class="muted" id="when"></p>
+<div class="summary" id="summary"></div>
+<div class="toolbar">
+  <input id="q" type="search" placeholder="アプリ名・用途で絞り込み (例: 歌声, DAW, VOICEVOX)">
+  <select id="cat"><option value="">すべてのカテゴリ</option></select>
+  <select id="sort"><option value="cat">カテゴリ順</option><option value="size">容量の大きい順</option><option value="name">名前順</option></select>
+</div>
+<h2>一覧</h2>
+<div id="list"></div>
+<h2>詳細</h2>
+<div id="cards"></div>
+<h2>VST / VST3 / CLAP / AAX プラグイン</h2>
+<div id="plugins"></div>
+<h2>このレポートについて</h2>
+<ul class="note">
+  <li>「音楽アプリ一覧を作成.bat」が自動生成しました。スキャンはファイルを読むだけで、何も変更・削除していません。</li>
+  <li>容量の「フォルダ実測」はインストール先フォルダの実際の合計サイズ、「推定値」はインストール情報に記録された値です。AI ツールはモデルファイルを別フォルダに置くことがあり、その分は含まれない場合があります。</li>
+  <li>用途・公式ページ・利用方法は既知アプリのカタログから表示しています。「その他」はアプリ名から自動判定したもので、音楽と関係ないソフトが含まれることがあります。</li>
+  <li>Microsoft Store アプリ、および下記以外の場所に置いたポータブル版は検出されないことがあります。</li>
+</ul>
+<details><summary class="note">スキャンした場所</summary><ul class="note" id="roots"></ul></details>
+<div id="errors"></div>
+</main>
+<script>const DATA = /*__DATA__*/null;</script>
+<script>
+(function () {
+  'use strict';
+  const D = DATA || { apps: [], plugins: [], categories: [], roots: {}, errors: [] };
+  const arr = v => (v == null ? [] : Array.isArray(v) ? v : [v]);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const leaf = p => String(p).replace(/[\\/]+$/, '').split(/[\\/]/).pop();
+  const stem = p => leaf(p).replace(/\.[^.]+$/, '');
+  const human = n => {
+    let v = Number(n);
+    for (const u of ['B', 'KB', 'MB', 'GB']) {
+      if (v < 1024) return u === 'B' ? v.toFixed(0) + u : v.toFixed(1) + u;
+      v /= 1024;
+    }
+    return v.toFixed(1) + 'TB';
+  };
+  const fileUrl = p => 'file:///' + encodeURI(String(p).replace(/\\/g, '/')).replace(/#/g, '%23').replace(/\?/g, '%3F');
+  const fileLink = (p, label) => p ? `<a href="${esc(fileUrl(p))}" title="${esc(p)}">${esc(label || p)}</a>` : '<span class="muted">不明</span>';
+  const KIND = { registry: 'インストール情報', shortcut: 'ショートカット', url: 'Web ショートカット', folder: 'フォルダ' };
+
+  function launchMethod(a) {
+    const steps = [];
+    const sc = arr(a.shortcuts);
+    const desk = sc.filter(s => /[\\/](desktop|デスクトップ)[\\/]/i.test(s));
+    const start = sc.filter(s => /start menu|スタート メニュー/i.test(s));
+    if (desk.length) steps.push(`デスクトップの「${stem(desk[0])}」をダブルクリック`);
+    if (start.length) steps.push(`スタートメニューで「${stem(start[0])}」を検索して起動`);
+    if (a.launchFile && !desk.length) {
+      const ext = (a.launchFile.match(/\.[^.\\/]+$/) || [''])[0].toLowerCase();
+      if (ext === '.py') steps.push(`コマンドプロンプトでフォルダに移動し python ${leaf(a.launchFile)} を実行`);
+      else if (ext === '.url') steps.push(`「${leaf(a.launchFile)}」をダブルクリック`);
+      else steps.push(`${ext === '.bat' || ext === '.cmd' ? 'バッチファイル' : '起動ファイル'}「${leaf(a.launchFile)}」をダブルクリック`);
+    }
+    if (!steps.length && a.webUrl) steps.push(`ブラウザで ${a.webUrl} を開く`);
+    if (!steps.length) steps.push(a.category && a.category.indexOf('プラグイン') >= 0 ? 'DAW を起動し、プラグインとして読み込む' : 'スタートメニューからアプリ名で検索して起動');
+    let text = steps.join(' / ');
+    if (a.launchNote) text += '。' + a.launchNote;
+    return text;
+  }
+
+  const order = {};
+  arr(D.categories).forEach((c, i) => { order[c] = i; });
+  const apps = arr(D.apps).slice().sort((a, b) => ((order[a.category] ?? 99) - (order[b.category] ?? 99)) || a.name.localeCompare(b.name, 'ja'));
+  const plugins = arr(D.plugins).slice().sort((a, b) => a.format.localeCompare(b.format) || a.name.localeCompare(b.name, 'ja'));
+  apps.forEach(a => { a.method = launchMethod(a); });
+
+  document.getElementById('when').textContent = `スキャン日時: ${D.scannedAt || ''}` + (D.computer ? ` / PC: ${D.computer}` : '');
+  const total = apps.reduce((s, a) => s + (Number(a.size) || 0), 0);
+  const ptotal = plugins.reduce((s, p) => s + (Number(p.size) || 0), 0);
+  document.getElementById('summary').innerHTML = [
+    ['アプリ', apps.length + ' 件'], ['アプリ合計容量', human(total)],
+    ['プラグイン', plugins.length + ' 件'], ['プラグイン合計容量', human(ptotal)],
+  ].map(([k, v]) => `<div class="stat">${k}<b>${v}</b></div>`).join('');
+
+  const cats = arr(D.categories).filter(c => apps.some(a => a.category === c));
+  document.getElementById('cat').insertAdjacentHTML('beforeend', cats.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join(''));
+
+  const sizeHtml = a => a.size ? `${human(a.size)} <span class="muted">(${esc(a.sizeNote)})</span>` : `<span class="muted">${esc(a.sizeNote || '不明')}</span>`;
+  const searchText = a => [a.name, a.category, a.purpose].concat(arr(a.names)).join(' ').toLowerCase();
+
+  document.getElementById('list').innerHTML = apps.length ? `
+<table id="summary-table"><thead><tr><th>アプリ</th><th>カテゴリ</th><th>容量</th><th>起動ファイル</th></tr></thead><tbody>
+${apps.map((a, i) => `<tr data-cat="${esc(a.category)}" data-search="${esc(searchText(a))}">
+<td><a href="#app-${i}">${esc(a.name)}</a></td><td>${esc(a.category)}</td>
+<td class="num" data-v="${Number(a.size) || 0}">${a.size ? human(a.size) : '-'}</td>
+<td><code>${a.launchFile ? esc(leaf(a.launchFile)) : '-'}</code></td></tr>`).join('')}
+</tbody></table>` : '<p>音楽関連のアプリは見つかりませんでした。</p>';
+
+  document.getElementById('cards').innerHTML = apps.map((a, i) => {
+    const meta = [a.version && 'バージョン ' + a.version, a.publisher].filter(Boolean).join(' / ');
+    const sc = arr(a.shortcuts).slice(0, 5).map(s => `<li>${fileLink(s, leaf(s))}</li>`).join('');
+    const kinds = arr(a.kinds).map(k => KIND[k] || k).join('、');
+    return `
+<article id="app-${i}" class="app" data-cat="${esc(a.category)}" data-search="${esc(searchText(a))}" data-size="${Number(a.size) || 0}" data-name="${esc(a.name)}">
+  <header><h3>${esc(a.name)}</h3><span class="tag">${esc(a.category)}</span><span class="size">${sizeHtml(a)}</span></header>
+  ${meta ? `<p class="meta">${esc(meta)}</p>` : ''}
+  <dl>
+    <dt>用途</dt><dd>${esc(a.purpose)}</dd>
+    <dt>公式ページ</dt><dd>${a.url ? `<a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.url)}</a>` : '<span class="muted">不明</span>'}</dd>
+    <dt>容量</dt><dd>${sizeHtml(a)}</dd>
+    <dt>起動方法</dt><dd>${esc(a.method)}</dd>
+    <dt>起動ファイル</dt><dd><code>${a.launchFile ? esc(a.launchFile) : '不明'}</code></dd>
+    <dt>インストール先</dt><dd>${fileLink(a.location)}</dd>
+    <dt>簡単な利用方法</dt><dd>${esc(a.howto)}</dd>
+    ${sc ? `<dt>ショートカット</dt><dd><ul>${sc}</ul></dd>` : ''}
+    <dt>検出元</dt><dd class="muted">${esc(kinds)} (${esc(arr(a.names).slice(0, 4).join(' / '))})</dd>
+  </dl>
+</article>`;
+  }).join('');
+
+  document.getElementById('plugins').innerHTML = plugins.length ? `
+<p class="note">DAW から読み込んで使う音源・エフェクトです。単体では起動しません (DAW のプラグイン一覧から選びます)。</p>
+<table id="plugin-table"><thead><tr><th>名前</th><th>形式</th><th>容量</th><th>場所</th></tr></thead><tbody>
+${plugins.map(p => `<tr><td>${esc(p.name)}</td><td>${esc(p.format)}</td><td class="num" data-v="${Number(p.size) || 0}">${human(p.size || 0)}</td><td>${fileLink(p.folder)}</td></tr>`).join('')}
+</tbody></table>` : '<p class="muted">プラグインフォルダに項目はありませんでした。</p>';
+
+  const R = D.roots || {};
+  document.getElementById('roots').innerHTML = [
+    ['デスクトップ', R.desktops], ['スタートメニュー', R.startMenus], ['プログラムフォルダ', R.programDirs],
+    ['C ドライブ直下ほか', R.shallowDirs], ['プラグインフォルダ', R.pluginDirs],
+  ].map(([k, v]) => `<li><b>${k}</b>: ${esc(arr(v).join(', ') || '(なし)')}</li>`).join('');
+  if (arr(D.errors).length) {
+    document.getElementById('errors').innerHTML = `<details open><summary class="note">エラー</summary><ul class="note">${arr(D.errors).map(e => `<li>${esc(e)}</li>`).join('')}</ul></details>`;
+  }
+
+  // 絞り込み・並べ替え
+  const q = document.getElementById('q'), cat = document.getElementById('cat'), sort = document.getElementById('sort');
+  const cards = document.getElementById('cards');
+  const original = Array.from(cards.children);
+  function apply() {
+    const text = q.value.trim().toLowerCase(), c = cat.value;
+    document.querySelectorAll('#cards .app, #summary-table tbody tr').forEach(el => {
+      el.style.display = (!c || el.dataset.cat === c) && (!text || el.dataset.search.includes(text)) ? '' : 'none';
+    });
+  }
+  function reorder() {
+    const items = original.slice();
+    if (sort.value === 'size') items.sort((a, b) => b.dataset.size - a.dataset.size);
+    if (sort.value === 'name') items.sort((a, b) => a.dataset.name.localeCompare(b.dataset.name, 'ja'));
+    items.forEach(el => cards.appendChild(el));
+  }
+  q.addEventListener('input', apply);
+  cat.addEventListener('change', apply);
+  sort.addEventListener('change', reorder);
+  document.querySelectorAll('table').forEach(table => {
+    table.querySelectorAll('th').forEach((th, i) => th.addEventListener('click', () => {
+      const body = table.tBodies[0], rows = Array.from(body.rows);
+      const dir = th.dataset.dir === 'asc' ? -1 : 1;
+      th.dataset.dir = dir === 1 ? 'asc' : 'desc';
+      rows.sort((a, b) => {
+        const x = a.cells[i], y = b.cells[i];
+        if (x.dataset.v !== undefined) return (x.dataset.v - y.dataset.v) * dir;
+        return x.textContent.localeCompare(y.textContent, 'ja') * dir;
+      });
+      rows.forEach(r => body.appendChild(r));
+    }));
+  });
+})();
+</script>
+</body>
+</html>

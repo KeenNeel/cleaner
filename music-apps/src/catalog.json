@@ -1,0 +1,1301 @@
+{
+ "categories": [
+  "AI作曲・音楽生成",
+  "AI歌声・音声合成",
+  "AI音源分離・声質変換",
+  "DAW (作曲・録音・編集)",
+  "楽譜作成・MIDI",
+  "波形編集・録音・変換",
+  "音源・プラグイン・管理ツール",
+  "オーディオ設定・ドライバ",
+  "その他 (音楽関連の可能性)"
+ ],
+ "entries": [
+  {
+   "id": "suno",
+   "name": "Suno",
+   "category": "AI作曲・音楽生成",
+   "purpose": "歌詞やスタイルの指示文から、ボーカル入りの楽曲を丸ごと AI 生成する Web サービス。",
+   "url": "https://suno.com/",
+   "match": [
+    "\\bsuno\\b"
+   ],
+   "exes": [],
+   "howto": "ブラウザで suno.com を開いてログイン → Create で曲のスタイル (例: J-POP, 女性ボーカル) と歌詞を入力 → Create を押すと 2 曲生成される。",
+   "launch_note": "Web サービスのため、ショートカット (URL) をダブルクリックするとブラウザで開きます。"
+  },
+  {
+   "id": "udio",
+   "name": "Udio",
+   "category": "AI作曲・音楽生成",
+   "purpose": "テキストの指示から歌入りの楽曲を生成・延長 (Extend) できる AI 作曲 Web サービス。",
+   "url": "https://www.udio.com/",
+   "match": [
+    "\\budio\\b"
+   ],
+   "exes": [],
+   "howto": "udio.com にログイン → プロンプトに曲の雰囲気を書いて Create → 気に入った曲を Extend で伸ばして 1 曲に仕上げる。",
+   "launch_note": "Web サービスのため、ショートカット (URL) をダブルクリックするとブラウザで開きます。"
+  },
+  {
+   "id": "stableaudio",
+   "name": "Stable Audio",
+   "category": "AI作曲・音楽生成",
+   "purpose": "Stability AI のテキストから音楽・効果音を生成する AI (Web 版 / ローカルモデル版)。",
+   "url": "https://stableaudio.com/",
+   "match": [
+    "stable[\\s_-]?audio"
+   ],
+   "exes": [],
+   "howto": "Web 版はプロンプトと長さを指定して Generate。ローカル版 (stable-audio-tools / ComfyUI) はモデルを読み込んでプロンプトを入力する。",
+   "launch_note": ""
+  },
+  {
+   "id": "musicgen",
+   "name": "MusicGen / AudioCraft (Meta)",
+   "category": "AI作曲・音楽生成",
+   "purpose": "Meta のオープンソース音楽生成 AI。テキストやメロディから BGM を生成する (Python / Gradio)。",
+   "url": "https://github.com/facebookresearch/audiocraft",
+   "match": [
+    "audiocraft",
+    "musicgen"
+   ],
+   "exes": [
+    "run.bat",
+    "start.bat",
+    "webui.bat",
+    "app.py"
+   ],
+   "howto": "付属の起動バッチ (または python app.py) で Web 画面を起動 → ブラウザで表示された URL を開き、説明文を入力して Generate。",
+   "launch_note": "起動後に表示される http://127.0.0.1:xxxx をブラウザで開きます。"
+  },
+  {
+   "id": "acestep",
+   "name": "ACE-Step",
+   "category": "AI作曲・音楽生成",
+   "purpose": "歌詞とタグから歌入り楽曲を生成するオープンソースの音楽生成モデル。",
+   "url": "https://github.com/ace-step/ACE-Step",
+   "match": [
+    "ace[\\s_-]?step"
+   ],
+   "exes": [
+    "run.bat",
+    "start.bat",
+    "acestep.exe"
+   ],
+   "howto": "起動バッチで Gradio 画面を開き、Tags (ジャンル等) と Lyrics を入力して Generate。",
+   "launch_note": "起動後に表示される http://127.0.0.1:7865 等をブラウザで開きます。"
+  },
+  {
+   "id": "yue",
+   "name": "YuE",
+   "category": "AI作曲・音楽生成",
+   "purpose": "歌詞から長尺のボーカル入り楽曲を生成するオープンソースモデル。",
+   "url": "https://github.com/multimodal-art-projection/YuE",
+   "match": [
+    "^yue\\b",
+    "yue[\\s_-]?(gp|ui|exllamav2)"
+   ],
+   "exes": [
+    "run.bat",
+    "start.bat"
+   ],
+   "howto": "ジャンル指定 (genre.txt) と歌詞 (lyrics.txt) を用意して推論スクリプト/Web UI から生成する。",
+   "launch_note": ""
+  },
+  {
+   "id": "riffusion",
+   "name": "Riffusion",
+   "category": "AI作曲・音楽生成",
+   "purpose": "スペクトログラム画像生成を応用した AI 作曲ツール / Web サービス。",
+   "url": "https://www.riffusion.com/",
+   "match": [
+    "riffusion"
+   ],
+   "exes": [],
+   "howto": "Web 版はプロンプトを入力して生成。ローカル版は付属の起動手順に従ってサーバーを立ち上げる。",
+   "launch_note": ""
+  },
+  {
+   "id": "comfyui",
+   "name": "ComfyUI",
+   "category": "AI作曲・音楽生成",
+   "purpose": "ノードをつなぐ方式の生成 AI 実行環境。Stable Audio / ACE-Step 等の音楽生成モデルも動かせる。",
+   "url": "https://www.comfy.org/",
+   "match": [
+    "comfyui",
+    "comfy[\\s_-]?ui"
+   ],
+   "exes": [
+    "comfyui.exe",
+    "run_nvidia_gpu.bat",
+    "run_cpu.bat",
+    "main.py"
+   ],
+   "howto": "run_nvidia_gpu.bat (GPU なしは run_cpu.bat) を実行 → ブラウザで http://127.0.0.1:8188 → 音楽用ワークフローを読み込んで Queue Prompt。",
+   "launch_note": "起動後に http://127.0.0.1:8188 をブラウザで開きます (デスクトップ版はアプリが直接開きます)。"
+  },
+  {
+   "id": "magenta",
+   "name": "Magenta Studio",
+   "category": "AI作曲・音楽生成",
+   "purpose": "Google Magenta の AI による MIDI フレーズ生成・続き生成・ドラム生成ツール (単体版 / Ableton 用)。",
+   "url": "https://magenta.tensorflow.org/studio",
+   "match": [
+    "magenta"
+   ],
+   "exes": [
+    "magenta studio.exe",
+    "continue.exe",
+    "generate.exe"
+   ],
+   "howto": "Generate / Continue / Drumify などのツールを開き、MIDI ファイルを入力して生成 → 結果の MIDI を DAW に読み込む。",
+   "launch_note": ""
+  },
+  {
+   "id": "aiva",
+   "name": "AIVA",
+   "category": "AI作曲・音楽生成",
+   "purpose": "スタイルやコード進行を指定して BGM を AI 作曲するサービス (デスクトップ版あり)。",
+   "url": "https://www.aiva.ai/",
+   "match": [
+    "\\baiva\\b"
+   ],
+   "exes": [
+    "aiva.exe"
+   ],
+   "howto": "ログイン → Create track でスタイル・キー・長さを選んで生成 → MIDI / WAV で書き出し。",
+   "launch_note": ""
+  },
+  {
+   "id": "orbplugins",
+   "name": "Orb Producer Suite",
+   "category": "AI作曲・音楽生成",
+   "purpose": "コード・メロディ・ベース・アルペジオを AI 生成する DAW 用プラグイン。",
+   "url": "https://www.orbplugins.com/",
+   "match": [
+    "orb\\s?producer",
+    "orb\\s?(chords|melody|bass|arpeggio)"
+   ],
+   "exes": [],
+   "howto": "DAW のインストゥルメント/MIDI トラックに挿してスタイルを選び、生成された MIDI をドラッグ&ドロップ。",
+   "launch_note": ""
+  },
+  {
+   "id": "scaler",
+   "name": "Scaler 2/3",
+   "category": "AI作曲・音楽生成",
+   "purpose": "コード進行の提案・生成を行う作曲支援プラグイン/スタンドアロン。",
+   "url": "https://www.pluginboutique.com/product/2-Effects/58-Chord-Generator/14431-Scaler-3",
+   "match": [
+    "^scaler\\s?\\d?\\b"
+   ],
+   "exes": [
+    "scaler 3.exe",
+    "scaler 2.exe",
+    "scaler.exe"
+   ],
+   "howto": "キーやジャンルを選ぶとコード候補が表示される → 並べて進行を作り MIDI として DAW へドラッグ。",
+   "launch_note": ""
+  },
+  {
+   "id": "synthv",
+   "name": "Synthesizer V Studio",
+   "category": "AI歌声・音声合成",
+   "purpose": "AI 歌声合成ソフト。MIDI と歌詞を入力するだけで人間らしい歌声を生成する。",
+   "url": "https://dreamtonics.com/synthesizerv/",
+   "match": [
+    "synthesizer\\s?v",
+    "synthv",
+    "dreamtonics"
+   ],
+   "exes": [
+    "synthv studio pro.exe",
+    "synthv studio basic.exe",
+    "synthesizer v studio pro.exe",
+    "synthesizer v studio 2 pro.exe",
+    "synthv studio.exe"
+   ],
+   "howto": "ボイスデータベースを選択 → ピアノロールにノートを描いて歌詞を入力 → 再生して確認 → WAV で書き出し。",
+   "launch_note": ""
+  },
+  {
+   "id": "vocaloid",
+   "name": "VOCALOID",
+   "category": "AI歌声・音声合成",
+   "purpose": "ヤマハの歌声合成ソフト。メロディと歌詞から歌声を作る。",
+   "url": "https://www.vocaloid.com/",
+   "match": [
+    "vocaloid"
+   ],
+   "exes": [
+    "vocaloid6.exe",
+    "vocaloid5.exe",
+    "vocaloid editor.exe"
+   ],
+   "howto": "Voice Bank を選んでトラックを作成 → ノートと歌詞を入力 → 表情パラメータを調整 → オーディオ書き出し。",
+   "launch_note": ""
+  },
+  {
+   "id": "piapro",
+   "name": "Piapro Studio (初音ミク NT 等)",
+   "category": "AI歌声・音声合成",
+   "purpose": "クリプトン社の歌声合成エディタ (VSTi / スタンドアロン)。",
+   "url": "https://ec.crypton.co.jp/",
+   "match": [
+    "piapro"
+   ],
+   "exes": [
+    "piapro studio nt.exe",
+    "piapro studio.exe"
+   ],
+   "howto": "DAW にプラグインとして挿す (または単体起動) → ノートと歌詞を入力して歌わせる。",
+   "launch_note": ""
+  },
+  {
+   "id": "cevio",
+   "name": "CeVIO AI",
+   "category": "AI歌声・音声合成",
+   "purpose": "AI による歌声・トーク音声の合成ソフト。",
+   "url": "https://cevio.jp/",
+   "match": [
+    "cevio"
+   ],
+   "exes": [
+    "cevio ai.exe",
+    "cevio creative studio.exe"
+   ],
+   "howto": "ソングトラックを追加 → 楽譜にノートと歌詞を入力 → 調声して書き出し。トークは文章を入力して再生。",
+   "launch_note": ""
+  },
+  {
+   "id": "voisona",
+   "name": "VoiSona",
+   "category": "AI歌声・音声合成",
+   "purpose": "AI 歌声合成ソフト (CeVIO 系技術、基本無料)。",
+   "url": "https://voisona.com/",
+   "match": [
+    "voisona"
+   ],
+   "exes": [
+    "voisona.exe"
+   ],
+   "howto": "ボイスライブラリを有効化 → ノートと歌詞を入力 → 再生・WAV 書き出し。",
+   "launch_note": ""
+  },
+  {
+   "id": "neutrino",
+   "name": "NEUTRINO",
+   "category": "AI歌声・音声合成",
+   "purpose": "MusicXML の楽譜から AI が歌声を合成する無料ソフト。",
+   "url": "https://studio-neutrino.com/",
+   "match": [
+    "neutrino"
+   ],
+   "exes": [
+    "neutrino.exe",
+    "run.bat",
+    "run_musicxml.bat"
+   ],
+   "howto": "楽譜ソフトで歌詞付き MusicXML を作成 → score\\musicxml に置く → Run.bat を編集して実行 → output に WAV が出力される。",
+   "launch_note": ""
+  },
+  {
+   "id": "utau",
+   "name": "UTAU / OpenUtau",
+   "category": "AI歌声・音声合成",
+   "purpose": "音声ライブラリを使って歌わせる歌声合成ソフト (OpenUtau は後継のオープンソース版)。",
+   "url": "https://www.openutau.com/",
+   "match": [
+    "\\butau\\b",
+    "openutau"
+   ],
+   "exes": [
+    "openutau.exe",
+    "utau.exe"
+   ],
+   "howto": "音源 (歌声ライブラリ) を導入 → ピアノロールにノートと歌詞を入力 → レンダリングして WAV 書き出し。",
+   "launch_note": ""
+  },
+  {
+   "id": "acestudio",
+   "name": "ACE Studio",
+   "category": "AI歌声・音声合成",
+   "purpose": "AI 歌声合成・AI 楽器演奏ソフト。MIDI から歌声やバイオリン等を生成する。",
+   "url": "https://acestudio.ai/",
+   "match": [
+    "ace\\s?studio"
+   ],
+   "exes": [
+    "ace studio.exe",
+    "acestudio.exe"
+   ],
+   "howto": "ボイス (歌手) を選んでトラック作成 → MIDI を読み込むかノートを入力 → 歌詞を流し込み → 書き出し。",
+   "launch_note": ""
+  },
+  {
+   "id": "voicevox",
+   "name": "VOICEVOX",
+   "category": "AI歌声・音声合成",
+   "purpose": "無料の AI 音声合成 (読み上げ) ソフト。ソング機能で簡単な歌唱も可能。",
+   "url": "https://voicevox.hiroshiba.jp/",
+   "match": [
+    "voicevox"
+   ],
+   "exes": [
+    "voicevox.exe"
+   ],
+   "howto": "キャラクターを選んで文章を入力 → 再生 → 音声書き出し。ソングタブでは MIDI を読み込み歌わせられる。",
+   "launch_note": ""
+  },
+  {
+   "id": "aivoice",
+   "name": "A.I.VOICE",
+   "category": "AI歌声・音声合成",
+   "purpose": "AI 音声合成 (トーク) ソフト。",
+   "url": "https://aivoice.jp/",
+   "match": [
+    "a\\.?i\\.?voice"
+   ],
+   "exes": [
+    "aivoiceeditor.exe",
+    "a.i.voice editor.exe"
+   ],
+   "howto": "ボイスを選び文章を入力 → 抑揚や話速を調整 → 音声保存。",
+   "launch_note": ""
+  },
+  {
+   "id": "uvr",
+   "name": "Ultimate Vocal Remover (UVR5)",
+   "category": "AI音源分離・声質変換",
+   "purpose": "AI で楽曲をボーカルと伴奏 (ドラム・ベース等) に分離する無料ソフト。",
+   "url": "https://ultimatevocalremover.com/",
+   "match": [
+    "ultimate\\s?vocal\\s?remover",
+    "^uvr\\d?\\b"
+   ],
+   "exes": [
+    "ultimate vocal remover.exe",
+    "uvr.exe",
+    "uvr.py"
+   ],
+   "howto": "入力ファイルと出力先を選択 → 処理方法 (MDX-Net / Demucs 等) とモデルを選ぶ → Start Processing。",
+   "launch_note": ""
+  },
+  {
+   "id": "demucs",
+   "name": "Demucs",
+   "category": "AI音源分離・声質変換",
+   "purpose": "Meta のオープンソース音源分離 AI。ボーカル・ドラム・ベース・その他に分ける。",
+   "url": "https://github.com/facebookresearch/demucs",
+   "match": [
+    "demucs"
+   ],
+   "exes": [
+    "demucs.exe",
+    "demucs-gui.exe",
+    "run.bat"
+   ],
+   "howto": "コマンド `demucs 曲.mp3` (または GUI 版) で実行 → separated フォルダにパートごとの WAV が出力される。",
+   "launch_note": ""
+  },
+  {
+   "id": "spleeter",
+   "name": "Spleeter",
+   "category": "AI音源分離・声質変換",
+   "purpose": "Deezer のオープンソース音源分離ツール。",
+   "url": "https://github.com/deezer/spleeter",
+   "match": [
+    "spleeter"
+   ],
+   "exes": [
+    "spleeter.exe",
+    "spleetergui.exe"
+   ],
+   "howto": "コマンド `spleeter separate -p spleeter:2stems -o 出力先 曲.mp3` で 2/4/5 パートに分離。",
+   "launch_note": ""
+  },
+  {
+   "id": "rvc",
+   "name": "RVC (Retrieval-based Voice Conversion)",
+   "category": "AI音源分離・声質変換",
+   "purpose": "歌声・話し声を別の人の声質に変換する AI ボイスチェンジャー / 学習ツール。",
+   "url": "https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI",
+   "match": [
+    "\\brvc\\b",
+    "retrieval[\\s_-]?based",
+    "rvc[\\s_-]?webui",
+    "applio"
+   ],
+   "exes": [
+    "go-web.bat",
+    "go-web-dml.bat",
+    "applio.exe",
+    "run-applio.bat",
+    "infer-web.py"
+   ],
+   "howto": "go-web.bat を実行 → ブラウザの WebUI で声モデル (.pth) を選択 → 変換したい音声を指定して Convert。",
+   "launch_note": "起動後に表示される http://127.0.0.1:7865 等をブラウザで開きます。"
+  },
+  {
+   "id": "sovits",
+   "name": "so-vits-svc",
+   "category": "AI音源分離・声質変換",
+   "purpose": "歌声を別の声質に変換する歌声変換 (SVC) AI。",
+   "url": "https://github.com/svc-develop-team/so-vits-svc",
+   "match": [
+    "so[\\s_-]?vits",
+    "sovits"
+   ],
+   "exes": [
+    "webui.bat",
+    "run.bat",
+    "webui.py"
+   ],
+   "howto": "起動バッチで WebUI を開き、モデルと設定ファイルを読み込み → 変換する音声をアップロードして変換。",
+   "launch_note": ""
+  },
+  {
+   "id": "wokada",
+   "name": "VC Client (w-okada)",
+   "category": "AI音源分離・声質変換",
+   "purpose": "RVC モデルなどを使ってリアルタイムに声を変換するボイスチェンジャー。",
+   "url": "https://github.com/w-okada/voice-changer",
+   "match": [
+    "mmvcserversio",
+    "voice[\\s_-]?changer",
+    "vcclient"
+   ],
+   "exes": [
+    "start_http.bat",
+    "mmvcserversio.exe",
+    "vcclient.exe"
+   ],
+   "howto": "start_http.bat を実行 → ブラウザ画面でモデルを選び、入力マイク・出力デバイスを設定して start。",
+   "launch_note": ""
+  },
+  {
+   "id": "lalal",
+   "name": "LALAL.AI",
+   "category": "AI音源分離・声質変換",
+   "purpose": "AI による音源分離 (ステム分割) サービス / デスクトップアプリ。",
+   "url": "https://www.lalal.ai/",
+   "match": [
+    "lalal"
+   ],
+   "exes": [
+    "lalal.ai.exe",
+    "lalal.exe"
+   ],
+   "howto": "分離したいパート (Vocal, Drum 等) を選び、ファイルをドラッグ&ドロップ → 分離結果をダウンロード。",
+   "launch_note": ""
+  },
+  {
+   "id": "flstudio",
+   "name": "FL Studio",
+   "category": "DAW (作曲・録音・編集)",
+   "purpose": "ループ・パターン中心の作曲がしやすい人気 DAW。ビートメイク・EDM 制作に強い。",
+   "url": "https://www.image-line.com/fl-studio/",
+   "match": [
+    "fl\\s?studio(?!\\s?asio)"
+   ],
+   "exes": [
+    "fl64.exe",
+    "fl.exe",
+    "fl studio.exe"
+   ],
+   "howto": "チャンネルラックで音色を選び、ステップ/ピアノロールでパターンを作る → プレイリストに並べて曲にする → File > Export で WAV/MP3 書き出し。",
+   "launch_note": ""
+  },
+  {
+   "id": "ableton",
+   "name": "Ableton Live",
+   "category": "DAW (作曲・録音・編集)",
+   "purpose": "ループを組み合わせる「セッションビュー」が特徴の DAW。ライブ演奏・電子音楽向け。",
+   "url": "https://www.ableton.com/",
+   "match": [
+    "ableton"
+   ],
+   "exes": [
+    "ableton live 12 suite.exe",
+    "ableton live 12 standard.exe",
+    "ableton live 12 intro.exe",
+    "ableton live 12 lite.exe",
+    "ableton live 11 suite.exe",
+    "ableton live 11 standard.exe",
+    "ableton live 11 lite.exe",
+    "ableton live 11 intro.exe"
+   ],
+   "howto": "ブラウザから音源やループをトラックへドラッグ → クリップを録音/打ち込み → アレンジメントビューで曲にまとめ → ファイル > 書き出し。",
+   "launch_note": ""
+  },
+  {
+   "id": "cubase",
+   "name": "Cubase",
+   "category": "DAW (作曲・録音・編集)",
+   "purpose": "Steinberg の定番 DAW。打ち込み・録音・ミックスまで幅広く対応。",
+   "url": "https://www.steinberg.net/ja/cubase/",
+   "match": [
+    "cubase"
+   ],
+   "exes": [
+    "cubase14.exe",
+    "cubase13.exe",
+    "cubase12.exe",
+    "cubase11.exe",
+    "cubase10.5.exe",
+    "cubase.exe"
+   ],
+   "howto": "プロジェクトを新規作成 → インストゥルメントトラックを追加して打ち込み/録音 → ミックス → ファイル > 書き出し > オーディオミックスダウン。",
+   "launch_note": ""
+  },
+  {
+   "id": "studioone",
+   "name": "Studio One",
+   "category": "DAW (作曲・録音・編集)",
+   "purpose": "ドラッグ&ドロップ操作中心で使いやすい DAW (PreSonus / Fender)。",
+   "url": "https://www.presonus.com/studioone",
+   "match": [
+    "studio\\s?one"
+   ],
+   "exes": [
+    "studio one.exe"
+   ],
+   "howto": "新規ソング作成 → 右側ブラウザから音源をドラッグしてトラック作成 → 打ち込み/録音 → ソング > ミックスダウンをエクスポート。",
+   "launch_note": ""
+  },
+  {
+   "id": "reaper",
+   "name": "REAPER",
+   "category": "DAW (作曲・録音・編集)",
+   "purpose": "軽量・高機能で低価格な DAW。カスタマイズ性が高い。",
+   "url": "https://www.reaper.fm/",
+   "match": [
+    "\\breaper\\b"
+   ],
+   "exes": [
+    "reaper.exe"
+   ],
+   "howto": "トラックを追加 (Ctrl+T) → FX から音源を挿して MIDI を打ち込む/録音 → File > Render で書き出し。",
+   "launch_note": ""
+  },
+  {
+   "id": "bitwig",
+   "name": "Bitwig Studio",
+   "category": "DAW (作曲・録音・編集)",
+   "purpose": "モジュレーション機能が強力な DAW。電子音楽・サウンドデザイン向け。",
+   "url": "https://www.bitwig.com/",
+   "match": [
+    "bitwig"
+   ],
+   "exes": [
+    "bitwig studio.exe"
+   ],
+   "howto": "トラックにデバイスをドラッグ → クリップを作って打ち込み → アレンジャーで並べる → File > Export Audio。",
+   "launch_note": ""
+  },
+  {
+   "id": "cakewalk",
+   "name": "Cakewalk / Sonar",
+   "category": "DAW (作曲・録音・編集)",
+   "purpose": "BandLab 提供の DAW (Cakewalk by BandLab / Sonar)。",
+   "url": "https://www.cakewalk.com/",
+   "match": [
+    "cakewalk",
+    "\\bsonar\\b"
+   ],
+   "exes": [
+    "cakewalk.exe",
+    "sonar.exe"
+   ],
+   "howto": "新規プロジェクト → インストゥルメントトラックを挿入して打ち込み/録音 → ファイル > エクスポート > オーディオ。",
+   "launch_note": ""
+  },
+  {
+   "id": "lmms",
+   "name": "LMMS",
+   "category": "DAW (作曲・録音・編集)",
+   "purpose": "無料・オープンソースの作曲ソフト。シンセやビートメイク機能を内蔵。",
+   "url": "https://lmms.io/",
+   "match": [
+    "\\blmms\\b"
+   ],
+   "exes": [
+    "lmms.exe"
+   ],
+   "howto": "Song Editor にインストゥルメントを追加 → Piano Roll で打ち込み → Beat+Bassline でリズム → File > Export。",
+   "launch_note": ""
+  },
+  {
+   "id": "protools",
+   "name": "Pro Tools",
+   "category": "DAW (作曲・録音・編集)",
+   "purpose": "Avid のプロ向け録音・ミックス DAW。スタジオ標準。",
+   "url": "https://www.avid.com/pro-tools",
+   "match": [
+    "pro\\s?tools"
+   ],
+   "exes": [
+    "protools.exe"
+   ],
+   "howto": "新規セッション作成 → トラック作成 → 録音/編集 → File > Bounce Mix で書き出し。",
+   "launch_note": ""
+  },
+  {
+   "id": "reason",
+   "name": "Reason",
+   "category": "DAW (作曲・録音・編集)",
+   "purpose": "ラック型の仮想機材で音作りする DAW / プラグイン (Reason Studios)。",
+   "url": "https://www.reasonstudios.com/",
+   "match": [
+    "^reason\\b",
+    "reason\\s?(studios|\\d+|rack)"
+   ],
+   "exes": [
+    "reason.exe",
+    "reason 13.exe",
+    "reason 12.exe"
+   ],
+   "howto": "ラックに音源やエフェクトを追加 → シーケンサーで打ち込み → File > Export Song as Audio File。",
+   "launch_note": ""
+  },
+  {
+   "id": "mixcraft",
+   "name": "Mixcraft",
+   "category": "DAW (作曲・録音・編集)",
+   "purpose": "Acoustica の初心者向け DAW。ループ素材が豊富。",
+   "url": "https://acoustica.com/mixcraft",
+   "match": [
+    "mixcraft"
+   ],
+   "exes": [
+    "mixcraft10.exe",
+    "mixcraft9.exe",
+    "mixcraft.exe"
+   ],
+   "howto": "ループライブラリから素材をドラッグ → 打ち込み/録音 → ミックスダウン。",
+   "launch_note": ""
+  },
+  {
+   "id": "musicmaker",
+   "name": "MAGIX Music Maker",
+   "category": "DAW (作曲・録音・編集)",
+   "purpose": "ループを並べるだけで曲を作れる初心者向け作曲ソフト。",
+   "url": "https://www.magix.com/music-maker/",
+   "match": [
+    "music\\s?maker"
+   ],
+   "exes": [
+    "musicmaker.exe",
+    "music maker.exe"
+   ],
+   "howto": "サウンドプールからループをトラックへドラッグ → 並べて曲にする → ファイル > 書き出し。",
+   "launch_note": ""
+  },
+  {
+   "id": "soundit",
+   "name": "Sound it!",
+   "category": "DAW (作曲・録音・編集)",
+   "purpose": "インターネット社の国産 DAW / 波形編集ソフト。",
+   "url": "https://www.ssw.co.jp/",
+   "match": [
+    "sound\\s?it!?"
+   ],
+   "exes": [
+    "soundit.exe"
+   ],
+   "howto": "新規作成 → オーディオ/MIDI トラックを追加 → 録音・編集 → ミックスダウンして書き出し。",
+   "launch_note": ""
+  },
+  {
+   "id": "abilitypro",
+   "name": "ABILITY",
+   "category": "DAW (作曲・録音・編集)",
+   "purpose": "インターネット社の国産 DAW。日本語環境で使いやすい。",
+   "url": "https://www.ssw.co.jp/products/ability/",
+   "match": [
+    "^ability\\b"
+   ],
+   "exes": [
+    "ability.exe"
+   ],
+   "howto": "新規ソング → トラック追加 → スコア/ピアノロールで打ち込み → ミックスダウン。",
+   "launch_note": ""
+  },
+  {
+   "id": "bandlab",
+   "name": "BandLab",
+   "category": "DAW (作曲・録音・編集)",
+   "purpose": "無料のオンライン DAW / コラボレーション作曲サービス。",
+   "url": "https://www.bandlab.com/",
+   "match": [
+    "bandlab(?!\\s?assistant)"
+   ],
+   "exes": [
+    "bandlab.exe"
+   ],
+   "howto": "Create → Studio でトラックを追加 → 録音やループで曲を作る → 保存して公開または書き出し。",
+   "launch_note": ""
+  },
+  {
+   "id": "musescore",
+   "name": "MuseScore",
+   "category": "楽譜作成・MIDI",
+   "purpose": "無料の楽譜作成ソフト。入力した楽譜を再生・MIDI/MusicXML 書き出しできる。",
+   "url": "https://musescore.org/",
+   "match": [
+    "musescore",
+    "muse\\s?hub"
+   ],
+   "exes": [
+    "musescore4.exe",
+    "musescore3.exe",
+    "musescore.exe",
+    "musehub.exe"
+   ],
+   "howto": "新しいスコアで楽器と拍子を選ぶ → N キーで音符入力 → 再生で確認 → ファイル > エクスポート (PDF / MIDI / MusicXML / MP3)。",
+   "launch_note": ""
+  },
+  {
+   "id": "domino",
+   "name": "Domino",
+   "category": "楽譜作成・MIDI",
+   "purpose": "無料の国産 MIDI シーケンサ。ピアノロールで細かく打ち込める。",
+   "url": "https://takabosoft.com/domino",
+   "match": [
+    "^domino\\b"
+   ],
+   "exes": [
+    "domino.exe"
+   ],
+   "howto": "音源 (MIDI 出力) を設定 → ピアノロールで打ち込み → 保存 (SMF/MIDI 形式で DAW に持っていける)。",
+   "launch_note": ""
+  },
+  {
+   "id": "dorico",
+   "name": "Dorico",
+   "category": "楽譜作成・MIDI",
+   "purpose": "Steinberg のプロ向け楽譜作成ソフト。",
+   "url": "https://www.steinberg.net/ja/dorico/",
+   "match": [
+    "dorico"
+   ],
+   "exes": [
+    "dorico5.exe",
+    "dorico4.exe",
+    "dorico.exe"
+   ],
+   "howto": "新規プロジェクトで楽器を追加 → 記譜モードで音符入力 → 再生モードで確認 → PDF/オーディオ書き出し。",
+   "launch_note": ""
+  },
+  {
+   "id": "sibelius",
+   "name": "Sibelius",
+   "category": "楽譜作成・MIDI",
+   "purpose": "Avid の楽譜作成ソフト。",
+   "url": "https://www.avid.com/sibelius",
+   "match": [
+    "sibelius"
+   ],
+   "exes": [
+    "sibelius.exe"
+   ],
+   "howto": "新規スコアで編成を選ぶ → 音符入力 → 再生 → PDF / MIDI / オーディオで書き出し。",
+   "launch_note": ""
+  },
+  {
+   "id": "finale",
+   "name": "Finale",
+   "category": "楽譜作成・MIDI",
+   "purpose": "MakeMusic の楽譜作成ソフト (2024 年に開発終了)。",
+   "url": "https://www.finalemusic.com/",
+   "match": [
+    "^finale\\b",
+    "makemusic"
+   ],
+   "exes": [
+    "finale.exe"
+   ],
+   "howto": "セットアップウィザードで編成を選ぶ → 高速入力/ステップ入力で音符入力 → 印刷・書き出し。",
+   "launch_note": ""
+  },
+  {
+   "id": "guitarpro",
+   "name": "Guitar Pro",
+   "category": "楽譜作成・MIDI",
+   "purpose": "ギター TAB 譜・楽譜の作成と再生ソフト。",
+   "url": "https://www.guitar-pro.com/",
+   "match": [
+    "guitar\\s?pro"
+   ],
+   "exes": [
+    "guitarpro.exe",
+    "guitarpro8.exe",
+    "guitarpro7.exe"
+   ],
+   "howto": "トラックに楽器を選ぶ → TAB 譜または五線譜で入力 → 再生で確認 → MIDI / オーディオ書き出し。",
+   "launch_note": ""
+  },
+  {
+   "id": "melodyne",
+   "name": "Melodyne",
+   "category": "波形編集・録音・変換",
+   "purpose": "録音した歌や楽器の音程・タイミングを 1 音ずつ修正できるピッチ編集ソフト。",
+   "url": "https://www.celemony.com/",
+   "match": [
+    "melodyne",
+    "celemony"
+   ],
+   "exes": [
+    "melodyne.exe",
+    "melodyne 5.exe"
+   ],
+   "howto": "DAW のトラックに ARA プラグインとして挿す (または単体でファイルを開く) → 音の塊 (blob) をドラッグして音程・長さを修正。",
+   "launch_note": ""
+  },
+  {
+   "id": "audacity",
+   "name": "Audacity",
+   "category": "波形編集・録音・変換",
+   "purpose": "無料の録音・波形編集ソフト。カット・ノイズ除去・形式変換などに便利。",
+   "url": "https://www.audacityteam.org/",
+   "match": [
+    "audacity"
+   ],
+   "exes": [
+    "audacity.exe"
+   ],
+   "howto": "ファイルを開くか録音 → 範囲を選択してカット/エフェクト (ノイズ除去等) → ファイル > 書き出し で MP3/WAV に保存。",
+   "launch_note": ""
+  },
+  {
+   "id": "ocenaudio",
+   "name": "ocenaudio",
+   "category": "波形編集・録音・変換",
+   "purpose": "軽量で使いやすい無料の波形編集ソフト。",
+   "url": "https://www.ocenaudio.com/",
+   "match": [
+    "ocenaudio"
+   ],
+   "exes": [
+    "ocenaudio.exe"
+   ],
+   "howto": "ファイルを開く → 範囲選択して編集/エフェクト → 名前を付けて保存。",
+   "launch_note": ""
+  },
+  {
+   "id": "wavelab",
+   "name": "WaveLab",
+   "category": "波形編集・録音・変換",
+   "purpose": "Steinberg のマスタリング・波形編集ソフト。",
+   "url": "https://www.steinberg.net/ja/wavelab/",
+   "match": [
+    "wavelab"
+   ],
+   "exes": [
+    "wavelab pro 12.exe",
+    "wavelab elements 12.exe",
+    "wavelab pro 11.exe",
+    "wavelab.exe"
+   ],
+   "howto": "オーディオファイルを開く → マスターセクションでエフェクト → レンダリングして書き出し。",
+   "launch_note": ""
+  },
+  {
+   "id": "soundforge",
+   "name": "SOUND FORGE",
+   "category": "波形編集・録音・変換",
+   "purpose": "MAGIX の波形編集・マスタリングソフト。",
+   "url": "https://www.magix.com/sound-forge/",
+   "match": [
+    "sound\\s?forge"
+   ],
+   "exes": [
+    "soundforge.exe",
+    "sound forge pro.exe"
+   ],
+   "howto": "ファイルを開いて編集 → エフェクト/マスタリング → 名前を付けて保存。",
+   "launch_note": ""
+  },
+  {
+   "id": "rx",
+   "name": "iZotope RX",
+   "category": "波形編集・録音・変換",
+   "purpose": "ノイズ・クリック・リップノイズ除去などの音声修復ソフト。",
+   "url": "https://www.izotope.com/en/products/rx.html",
+   "match": [
+    "izotope\\s?rx",
+    "^rx\\s?\\d+"
+   ],
+   "exes": [
+    "izotope rx 11 audio editor.exe",
+    "izotope rx 10 audio editor.exe",
+    "izotope rx audio editor.exe"
+   ],
+   "howto": "ファイルを開く → スペクトログラムで問題箇所を選択 → De-noise 等のモジュールを適用 → 書き出し。",
+   "launch_note": ""
+  },
+  {
+   "id": "audiotools",
+   "name": "fre:ac / foobar2000 (変換)",
+   "category": "波形編集・録音・変換",
+   "purpose": "音声ファイルの形式変換・タグ編集に使える無料ツール。",
+   "url": "https://www.freac.org/",
+   "match": [
+    "fre[:\\s]?ac",
+    "foobar2000"
+   ],
+   "exes": [
+    "freac.exe",
+    "foobar2000.exe"
+   ],
+   "howto": "ファイルを追加 → 出力形式 (MP3/FLAC 等) を選んで変換開始。",
+   "launch_note": ""
+  },
+  {
+   "id": "nativeaccess",
+   "name": "Native Access / Kontakt (Native Instruments)",
+   "category": "音源・プラグイン・管理ツール",
+   "purpose": "Native Instruments 製品 (Kontakt, Komplete 等) のインストール・アクティベーション管理と、サンプラー音源。",
+   "url": "https://www.native-instruments.com/",
+   "match": [
+    "native\\s?access",
+    "native\\s?instruments",
+    "kontakt",
+    "komplete",
+    "maschine",
+    "massive"
+   ],
+   "exes": [
+    "native access.exe",
+    "kontakt 8.exe",
+    "kontakt 7.exe",
+    "kontakt.exe",
+    "komplete kontrol.exe"
+   ],
+   "howto": "Native Access でログインして製品をインストール/更新 → DAW から Kontakt 等をプラグインとして読み込む。",
+   "launch_note": ""
+  },
+  {
+   "id": "arturia",
+   "name": "Arturia Software Center / V Collection",
+   "category": "音源・プラグイン・管理ツール",
+   "purpose": "Arturia のシンセ音源 (Analog Lab, Pigments 等) と、その管理ツール。",
+   "url": "https://www.arturia.com/",
+   "match": [
+    "arturia",
+    "analog\\s?lab",
+    "pigments"
+   ],
+   "exes": [
+    "arturia software center.exe",
+    "analog lab v.exe",
+    "pigments.exe"
+   ],
+   "howto": "Software Center でログインして製品をインストール → DAW でプラグインとして使う (単体起動も可)。",
+   "launch_note": ""
+  },
+  {
+   "id": "spitfire",
+   "name": "Spitfire Audio",
+   "category": "音源・プラグイン・管理ツール",
+   "purpose": "オーケストラ・映画音楽向け音源 (BBC Symphony Orchestra, LABS 等) と管理アプリ。",
+   "url": "https://www.spitfireaudio.com/",
+   "match": [
+    "spitfire"
+   ],
+   "exes": [
+    "spitfire audio.exe"
+   ],
+   "howto": "Spitfire Audio アプリで音源をダウンロード → DAW でプラグインとして読み込む。LABS は無料。",
+   "launch_note": ""
+  },
+  {
+   "id": "splice",
+   "name": "Splice",
+   "category": "音源・プラグイン・管理ツール",
+   "purpose": "サンプル素材 (ループ・ワンショット) のサブスク配信とプラグイン管理アプリ。",
+   "url": "https://splice.com/",
+   "match": [
+    "\\bsplice\\b"
+   ],
+   "exes": [
+    "splice.exe"
+   ],
+   "howto": "Web/アプリでサンプルを検索して取得 → Splice フォルダの素材を DAW にドラッグ。",
+   "launch_note": ""
+  },
+  {
+   "id": "serum",
+   "name": "Serum (Xfer Records)",
+   "category": "音源・プラグイン・管理ツール",
+   "purpose": "EDM で定番のウェーブテーブルシンセ プラグイン。",
+   "url": "https://xferrecords.com/products/serum-2",
+   "match": [
+    "\\bserum\\b",
+    "xfer"
+   ],
+   "exes": [],
+   "howto": "DAW のインストゥルメントトラックにプラグインとして挿す → プリセットを選んで演奏/打ち込み。",
+   "launch_note": ""
+  },
+  {
+   "id": "vital",
+   "name": "Vital",
+   "category": "音源・プラグイン・管理ツール",
+   "purpose": "無料から使えるウェーブテーブルシンセ プラグイン。",
+   "url": "https://vital.audio/",
+   "match": [
+    "^vital\\b(?!source)"
+   ],
+   "exes": [
+    "vital.exe"
+   ],
+   "howto": "DAW にプラグインとして挿す → プリセットを選ぶ / 波形を描いて音作り。",
+   "launch_note": ""
+  },
+  {
+   "id": "izotope",
+   "name": "iZotope Product Portal / Ozone / Neutron",
+   "category": "音源・プラグイン・管理ツール",
+   "purpose": "AI アシスタント付きのマスタリング (Ozone)・ミックス (Neutron) プラグインと管理ツール。",
+   "url": "https://www.izotope.com/",
+   "match": [
+    "izotope",
+    "\\bozone\\b",
+    "neutron",
+    "native\\s?instruments\\s?product\\s?portal"
+   ],
+   "exes": [
+    "izotope product portal.exe",
+    "izotope ozone 11.exe",
+    "izotope ozone 10.exe"
+   ],
+   "howto": "マスタートラックに Ozone を挿す → Master Assistant で自動調整 → 好みで微調整。",
+   "launch_note": ""
+  },
+  {
+   "id": "waves",
+   "name": "Waves Central",
+   "category": "音源・プラグイン・管理ツール",
+   "purpose": "Waves プラグインのインストール・ライセンス管理ツール。",
+   "url": "https://www.waves.com/",
+   "match": [
+    "waves\\s?central",
+    "^waves\\b"
+   ],
+   "exes": [
+    "waves central.exe"
+   ],
+   "howto": "Waves Central でログイン → 製品をインストール/ライセンスを有効化 → DAW でプラグインを使う。",
+   "launch_note": ""
+  },
+  {
+   "id": "autotune",
+   "name": "Antares Auto-Tune",
+   "category": "音源・プラグイン・管理ツール",
+   "purpose": "ボーカルの音程補正・ケロケロボイス効果の定番プラグイン。",
+   "url": "https://www.antarestech.com/",
+   "match": [
+    "auto[\\s-]?tune",
+    "antares"
+   ],
+   "exes": [
+    "antares central.exe"
+   ],
+   "howto": "ボーカルトラックにプラグインとして挿す → Key と Scale を曲に合わせ、Retune Speed で補正の強さを調整。",
+   "launch_note": ""
+  },
+  {
+   "id": "steinbergtools",
+   "name": "Steinberg Download Assistant / Activation Manager",
+   "category": "音源・プラグイン・管理ツール",
+   "purpose": "Cubase など Steinberg 製品のダウンロードとライセンス管理ツール。",
+   "url": "https://www.steinberg.net/",
+   "match": [
+    "steinberg\\s?(download|activation|library)",
+    "elicenser"
+   ],
+   "exes": [
+    "steinberg download assistant.exe",
+    "steinberg activation manager.exe"
+   ],
+   "howto": "アプリを起動して Steinberg ID でログイン → 製品・音源をダウンロード / ライセンスを有効化。",
+   "launch_note": ""
+  },
+  {
+   "id": "ilok",
+   "name": "iLok License Manager",
+   "category": "音源・プラグイン・管理ツール",
+   "purpose": "多くのプラグイン (Pro Tools, UAD, Softube 等) のライセンス管理ツール。",
+   "url": "https://www.ilok.com/",
+   "match": [
+    "\\bilok\\b",
+    "pace\\s?license"
+   ],
+   "exes": [
+    "license support.exe",
+    "ilok license manager.exe"
+   ],
+   "howto": "iLok アカウントでサインイン → 購入したライセンスをこの PC (または iLok USB) に割り当てる。",
+   "launch_note": ""
+  },
+  {
+   "id": "plugin_alliance",
+   "name": "Plugin Alliance / Plugin Boutique / UAD",
+   "category": "音源・プラグイン・管理ツール",
+   "purpose": "プラグイン販売サイトの製品管理アプリ (Installation Manager / UA Connect 等)。",
+   "url": "https://www.plugin-alliance.com/",
+   "match": [
+    "plugin\\s?alliance",
+    "plugin\\s?boutique",
+    "ua\\s?connect",
+    "universal\\s?audio"
+   ],
+   "exes": [
+    "installation manager.exe",
+    "ua connect.exe"
+   ],
+   "howto": "管理アプリでログイン → 購入済みプラグインをインストール → DAW を起動してプラグインを再スキャン。",
+   "launch_note": ""
+  },
+  {
+   "id": "ezdrummer",
+   "name": "Toontrack EZdrummer / Superior Drummer",
+   "category": "音源・プラグイン・管理ツール",
+   "purpose": "生ドラム音源と MIDI グルーブを提供するドラム音源。",
+   "url": "https://www.toontrack.com/",
+   "match": [
+    "toontrack",
+    "ez\\s?(drummer|keys|bass)",
+    "superior\\s?drummer"
+   ],
+   "exes": [
+    "ezdrummer 3.exe",
+    "superior drummer 3.exe",
+    "toontrack product manager.exe"
+   ],
+   "howto": "DAW にプラグインとして挿す → Grooves から好みのリズムパターンを曲にドラッグ。",
+   "launch_note": ""
+  },
+  {
+   "id": "asio4all",
+   "name": "ASIO4ALL",
+   "category": "オーディオ設定・ドライバ",
+   "purpose": "専用ドライバのないオーディオ機器でも DAW を低遅延で使えるようにする汎用 ASIO ドライバ。",
+   "url": "https://asio4all.org/",
+   "match": [
+    "asio4all"
+   ],
+   "exes": [],
+   "howto": "DAW のオーディオ設定でドライバに ASIO4ALL を選択 → 使う入出力デバイスを有効化し、バッファサイズを調整。",
+   "launch_note": "単体では起動しません。DAW のオーディオ設定から選択して使います。"
+  },
+  {
+   "id": "flasio",
+   "name": "FL Studio ASIO",
+   "category": "オーディオ設定・ドライバ",
+   "purpose": "FL Studio に付属する汎用 ASIO ドライバ (他の DAW でも使用可)。",
+   "url": "https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/envsettings_audio.htm",
+   "match": [
+    "fl\\s?studio\\s?asio"
+   ],
+   "exes": [],
+   "howto": "DAW のオーディオ設定でデバイスに「FL Studio ASIO」を選ぶ。",
+   "launch_note": "単体では起動しません。DAW のオーディオ設定から選択して使います。"
+  },
+  {
+   "id": "voicemeeter",
+   "name": "VoiceMeeter",
+   "category": "オーディオ設定・ドライバ",
+   "purpose": "PC 内の音声を自由にミックス・ルーティングできる仮想ミキサー。配信・録音で便利。",
+   "url": "https://vb-audio.com/Voicemeeter/",
+   "match": [
+    "voicemeeter",
+    "vb-?audio",
+    "vb-?cable"
+   ],
+   "exes": [
+    "voicemeeter8x64.exe",
+    "voicemeeterpro_x64.exe",
+    "voicemeeter_x64.exe",
+    "voicemeeter.exe"
+   ],
+   "howto": "起動して HARDWARE INPUT にマイク、A1 に出力デバイスを割り当て → 各アプリの出力を VoiceMeeter に向ける。",
+   "launch_note": ""
+  },
+  {
+   "id": "audiointerface",
+   "name": "オーディオインターフェース設定ツール",
+   "category": "オーディオ設定・ドライバ",
+   "purpose": "Steinberg / Yamaha / Focusrite / Roland / Behringer 等のオーディオインターフェース用ドライバと設定アプリ。",
+   "url": "https://focusrite.com/downloads",
+   "match": [
+    "yamaha\\s?steinberg\\s?usb",
+    "focusrite",
+    "scarlett",
+    "roland\\s?(rubix|quad|duo|octa)",
+    "behringer",
+    "motu",
+    "presonus\\s?universal",
+    "audient",
+    "zoom\\s?(uac|livetrak|l-)"
+   ],
+   "exes": [
+    "focusrite control 2.exe",
+    "focusrite control.exe",
+    "dspmixfx_ur-c.exe"
+   ],
+   "howto": "機器を USB 接続 → 設定アプリで入出力・サンプルレートを確認 → DAW のオーディオ設定でその機器の ASIO ドライバを選ぶ。",
+   "launch_note": ""
+  }
+ ],
+ "generic": [
+  "\\bvst[i3]?\\b",
+  "\\bclap\\b",
+  "\\baax\\b",
+  "\\bdaw\\b",
+  "synth",
+  "sampler",
+  "\\bmidi\\b",
+  "vocal",
+  "music",
+  "\\bbeat",
+  "drum",
+  "\\bpiano\\b",
+  "orchestra",
+  "音楽",
+  "音源",
+  "作曲",
+  "歌声",
+  "楽譜",
+  "\\bsong\\b",
+  "\\bmixer\\b",
+  "mastering",
+  "reverb",
+  "\\bcompressor\\b",
+  "\\beq\\b"
+ ],
+ "genericExclude": [
+  "realtek",
+  "nvidia",
+  "\\bamd\\b",
+  "intel",
+  "microsoft",
+  "windows",
+  "high definition audio",
+  "\\bhd audio\\b",
+  "conexant",
+  "dolby",
+  "dts",
+  "itunes",
+  "apple",
+  "spotify",
+  "amazon music",
+  "youtube",
+  "steam",
+  "epic games",
+  "xbox",
+  "discord"
+ ]
+}
