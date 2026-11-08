@@ -1,0 +1,487 @@
+import os
+from types import SimpleNamespace
+
+import pytest
+
+from cleaner import cli, config
+from cleaner.fsutil import is_cloud_only
+from cleaner.models import Candidate, Skipped
+from cleaner.protect import Protector
+from cleaner.rules import dedupe
+
+from .conftest import set_age
+
+
+def write(path, content: bytes, age_days: float = 10):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+    set_age(path, age_days)
+    return path
+
+
+def blob(seed: int, size: int = 4096) -> bytes:
+    return bytes((seed + i) % 251 for i in range(size))
+
+
+def collect(env, drives=None, **dedupe_cfg):
+    env.cfg["dedupe"].update(dedupe_cfg)
+    with dedupe.HashCache(None, env.now) as cache:
+        ctx = dedupe.DedupeContext(
+            paths=env.paths, cfg=env.cfg, drives=drives or [env.c, env.d], now=env.now,
+            protector=Protector(env.paths, env.cfg, env.now), cache=cache,
+        )
+        results = list(dedupe.collect(ctx))
+    cands = [r for r in results if isinstance(r, Candidate)]
+    skipped = [r for r in results if isinstance(r, Skipped)]
+    return cands, skipped
+
+
+def test_same_drive_duplicate_keeps_documents_copy(env):
+    home = env.paths.home
+    keep = write(home / "Documents" / "report.pdf", blob(1))
+    dup = write(home / "Desktop" / "report.pdf", blob(1))
+    write(home / "Documents" / "other.pdf", blob(2))  # 同じサイズで中身が違う
+    cands, _ = collect(env)
+    assert [(c.path, c.category, c.approval) for c in cands] == [(dup, "duplicate", False)]
+    assert str(keep) in cands[0].reason
+
+
+def test_same_head_and_tail_but_different_middle(env):
+    size = 3 * dedupe.PARTIAL_BYTES
+    a = bytearray(blob(1, size))
+    b = bytearray(a)
+    b[size // 2] ^= 0xFF
+    write(env.paths.home / "Videos" / "a.mp4", bytes(a))
+    write(env.paths.home / "Videos" / "b.mp4", bytes(b))
+    cands, _ = collect(env)
+    assert cands == []
+
+
+def test_shallower_path_kept_when_same_priority(env):
+    write(env.c.root / "Data" / "big.iso", blob(3))
+    deep = write(env.c.root / "Data" / "old" / "copy" / "big.iso", blob(3))
+    cands, _ = collect(env)
+    assert [c.path for c in cands] == [deep]
+
+
+def test_min_size(env):
+    write(env.c.root / "Data" / "a.bin", blob(4))
+    write(env.c.root / "Data" / "b.bin", blob(4))
+    assert collect(env, min_size_kb=5)[0] == []
+    assert len(collect(env, min_size_kb=4)[0]) == 1
+
+
+def test_cross_drive_is_approval_by_default(env):
+    write(env.paths.home / "Pictures" / "photo.jpg", blob(5))
+    backup = write(env.d.root / "Backup" / "photo.jpg", blob(5))
+    cands, _ = collect(env)
+    assert [(c.path, c.category, c.approval) for c in cands] == [(backup, "duplicate_cross_drive", True)]
+    cands, _ = collect(env, cross_drive="quarantine")
+    assert [c.approval for c in cands] == [False]
+
+
+def test_cross_drive_with_local_duplicates(env):
+    write(env.paths.home / "Pictures" / "photo.jpg", blob(6))
+    c_dup = write(env.paths.home / "Downloads" / "photo.jpg", blob(6))
+    d_keep = write(env.d.root / "Backup" / "photo.jpg", blob(6))
+    d_dup = write(env.d.root / "Backup" / "old" / "photo.jpg", blob(6))
+    cands, _ = collect(env)
+    result = {c.path: (c.category, c.approval) for c in cands}
+    assert result == {
+        c_dup: ("duplicate", False),
+        d_dup: ("duplicate", False),
+        d_keep: ("duplicate_cross_drive", True),
+    }
+
+
+def test_whole_folder_duplicate_is_approval_only(env):
+    home = env.paths.home
+    for name, seed in (("1.jpg", 10), ("2.jpg", 11), ("sub/3.jpg", 12)):
+        write(home / "Pictures" / "trip" / name, blob(seed))
+        write(home / "Downloads" / "trip (copy)" / name, blob(seed))
+    loose = write(home / "Downloads" / "1.jpg", blob(10))
+    cands, _ = collect(env)
+    folders = [c for c in cands if c.category == "duplicate_folder"]
+    assert [(c.path, c.approval, c.is_dir, c.size) for c in folders] == [
+        (home / "Downloads" / "trip (copy)", True, True, 3 * 4096)
+    ]
+    # フォルダ内のファイルは個別に隔離しない。フォルダ外の重複も、残す側がフォルダ内なら触らない
+    assert [c for c in cands if c.category != "duplicate_folder"] == []
+    assert loose.exists()
+
+
+def test_partial_folder_match_is_handled_per_file(env):
+    home = env.paths.home
+    write(home / "Pictures" / "trip" / "1.jpg", blob(20))
+    write(home / "Pictures" / "trip" / "2.jpg", blob(21))
+    dup = write(home / "Downloads" / "trip" / "1.jpg", blob(20))
+    cands, _ = collect(env)
+    assert [(c.path, c.category) for c in cands] == [(dup, "duplicate")]
+
+
+def test_protected_locations(env):
+    home = env.paths.home
+    write(home / "Documents" / "keep.bin", blob(30))
+    write(env.paths.localappdata / "app" / "keep.bin", blob(30))  # AppData は走査しない
+    write(home / "repo" / ".git" / "HEAD", b"ref")
+    write(home / "repo" / "keep.bin", blob(30))  # Git リポジトリ内
+    write(home / "Tools" / "app" / "tool.dll", b"MZ")
+    write(home / "Tools" / "app" / "data" / "keep.bin", blob(30))  # アプリのフォルダ
+    write(env.c.root / "Windows" / "keep.bin", blob(30))
+    write(home / "Downloads" / "keep.bin.crdownload", blob(30))  # 中断ダウンロード
+    recent = write(home / "Desktop" / "keep.bin", blob(30), age_days=0.1)  # 作業中かもしれない
+    cands, skipped = collect(env)
+    assert cands == []
+    assert [(s.path, s.reason) for s in skipped] == [(recent, "最近更新された (作業中の可能性)")]
+
+
+def test_installer_in_downloads_does_not_hide_folder(env):
+    downloads = env.paths.downloads
+    write(downloads / "setup.exe", b"MZ")
+    write(env.paths.home / "Documents" / "movie.mp4", blob(40))
+    dup = write(downloads / "movie.mp4", blob(40))
+    cands, _ = collect(env)
+    assert [c.path for c in cands] == [dup]
+
+
+def test_user_protect_folder(env):
+    write(env.d.root / "Work" / "a.bin", blob(41))
+    write(env.d.root / "Work" / "b.bin", blob(41))
+    env.cfg["protect"] = [str(env.d.root / "Work")]
+    assert collect(env)[0] == []
+
+
+def test_hardlinks_are_ignored(env):
+    a = write(env.c.root / "Data" / "a.bin", blob(50))
+    os.link(a, env.c.root / "Data" / "b.bin")
+    assert collect(env)[0] == []
+
+
+def test_changed_after_scan_is_skipped(env, monkeypatch):
+    write(env.paths.home / "Documents" / "a.bin", blob(60))
+    dup = write(env.paths.home / "Downloads" / "a.bin", blob(60))
+    real = dedupe.find_groups
+
+    def find_then_modify(ctx, files):
+        groups = real(ctx, files)
+        set_age(dup, 5)
+        return groups
+
+    monkeypatch.setattr(dedupe, "find_groups", find_then_modify)
+    assert collect(env)[0] == []
+
+
+def test_hash_cache_reuses_and_invalidates(env, tmp_path, monkeypatch):
+    f = write(tmp_path / "a.bin", blob(70, 300 * 1024))
+    calls = []
+    real = dedupe.HashCache._COLUMNS["full"]
+    monkeypatch.setitem(dedupe.HashCache._COLUMNS, "full", lambda p, s: calls.append(p) or real(p, s))
+    db = tmp_path / "cache.db"
+    st = f.stat()
+    with dedupe.HashCache(db, env.now) as cache:
+        first = cache.full(f, st.st_size, st.st_mtime_ns)
+    with dedupe.HashCache(db, env.now) as cache:
+        assert cache.full(f, st.st_size, st.st_mtime_ns) == first
+        assert len(calls) == 1
+        write(f, blob(71, 300 * 1024), age_days=3)
+        st = f.stat()
+        assert cache.full(f, st.st_size, st.st_mtime_ns) != first
+        assert len(calls) == 2
+
+
+def test_cloud_only_attribute():
+    assert is_cloud_only(SimpleNamespace(st_file_attributes=0x400000))
+    assert not is_cloud_only(SimpleNamespace(st_file_attributes=0x20))
+    assert not is_cloud_only(SimpleNamespace())
+
+
+# ---- engine / CLI ----
+
+
+def test_engine_quarantines_and_restores(enabled_env):
+    env = enabled_env
+    keep = write(env.paths.home / "Documents" / "a.bin", blob(80))
+    dup = write(env.paths.home / "Downloads" / "a.bin", blob(80))
+    backup = write(env.d.root / "a.bin", blob(80))
+    report = env.engine().run(dry_run=False)
+    kinds = {a.path: a.kind for a in report.actions}
+    assert kinds == {str(dup): "quarantined", str(backup): "needs_approval"}
+    assert keep.exists() and backup.exists() and not dup.exists()
+    ref = next(r for r in env.engine().items() if r.item.feature == "F2")
+    env.engine().restore([ref])
+    assert dup.read_bytes() == blob(80)
+
+
+def test_engine_features_filter(env):
+    write(env.paths.temp / "old.tmp", blob(1), age_days=30)
+    write(env.paths.home / "Documents" / "a.bin", blob(81))
+    write(env.paths.home / "Downloads" / "a.bin", blob(81))
+    report = env.engine().run(dry_run=True, features=["F2"])
+    assert [a.feature for a in report.actions] == ["F2"]
+    assert (env.paths.data_dir / "hashcache.db").exists()
+
+
+def test_cli_scan_large_duplicates_on_one_drive(env, capsys):
+    write(env.paths.home / "Documents" / "big.mkv", blob(90, 2 * 1024 * 1024))
+    write(env.paths.home / "Downloads" / "big.mkv", blob(90, 2 * 1024 * 1024))
+    write(env.paths.home / "Documents" / "small.txt", blob(91))
+    write(env.paths.home / "Downloads" / "small.txt", blob(91))
+    env.cfg = config.load(env.paths)
+    code = cli.main(["scan", "--drive", "VOL-C", "--only", "F2", "--min-size", "1MB"],
+                    paths=env.paths, engine=env.engine())
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "[隔離予定] 重複ファイル (同一ドライブ内): 1 件 / 2.0MB" in out
+    assert "big.mkv" in out and "small.txt" not in out
+
+
+def test_cli_size_and_feature_parsers():
+    assert cli._size("100MB") == 100 * 1024
+    assert cli._size("1.5gb") == int(1.5 * 1024 * 1024)
+    assert cli._features("f1, F2") == ["F1", "F2"]
+    for bad in ("100", "0KB"):
+        try:
+            cli._size(bad)
+        except Exception as e:  # argparse.ArgumentTypeError
+            assert "サイズ" in str(e)
+        else:
+            raise AssertionError(bad)
+
+
+def test_feature_only_review_allows_feature_only_run(env):
+    env.cfg["enabled"] = True
+    old_tmp = write(env.paths.temp / "old.tmp", blob(1), age_days=30)
+    write(env.paths.home / "Documents" / "a.bin", blob(82))
+    dup = write(env.paths.home / "Downloads" / "a.bin", blob(82))
+    first = env.engine().run(dry_run=True, features=["F2"])
+    assert [a.kind for a in first.actions] == ["would_quarantine"]
+    second = env.engine().run(dry_run=False, features=["F2"])
+    assert [a.kind for a in second.actions] == ["quarantined"]
+    assert not dup.exists()
+    # F1 はまだ確認していないので、全機能の実行ではドライランになる
+    third = env.engine().run(dry_run=False)
+    assert [a.kind for a in third.actions] == ["would_quarantine"]
+    assert old_tmp.exists()
+
+
+def test_exe_in_drive_root_or_users_does_not_hide_drive(env):
+    write(env.c.root / "installer.exe", b"MZ")
+    write(env.c.root / "Users" / "tool.exe", b"MZ")
+    write(env.paths.home / "Documents" / "a.bin", blob(83))
+    dup = write(env.paths.home / "Videos" / "old" / "a.bin", blob(83))
+    cands, _ = collect(env)
+    assert [c.path for c in cands] == [dup]
+
+
+def test_skipped_folders_are_logged(env, caplog):
+    write(env.c.root / "Tools" / "app.dll", b"MZ")
+    with caplog.at_level("INFO", logger="cleaner.rules.dedupe"):
+        collect(env)
+    assert "Tools を飛ばしました: アプリのフォルダ (app.dll)" in caplog.text
+
+
+def test_folder_copies_in_many_places_are_reported_once(env):
+    # 同じ blobs フォルダが 3 か所、その中の 28 フォルダだけがもう 1 か所にある
+    home = env.paths.home
+    blobs = [
+        env.c.root / "ChordMini" / "cache" / "blobs",
+        home / "Desktop" / "ChordLyrics" / "cache" / "blobs",
+        home / "Desktop" / "backup" / "files" / "cache" / "blobs",
+    ]
+    lone_28 = home / "Desktop" / "lyrics-server" / "models" / "blobs" / "28"
+    for i, root in enumerate(blobs):
+        write(root.parent / "own.json", blob(110 + i))  # 親フォルダの中身はそれぞれ違う
+        for name, seed in (("a", 100), ("b", 101), ("28/x", 102), ("28/y", 103)):
+            write(root / name, blob(seed))
+    for name, seed in (("x", 102), ("y", 103)):
+        write(lone_28 / name, blob(seed))
+    write(lone_28.parent / "own.json", blob(120))
+
+    cands, _ = collect(env)
+    folders = {c.path: c for c in cands if c.category == "duplicate_folder"}
+    assert set(folders) == {blobs[1], blobs[2], lone_28}
+    keep = str(blobs[0])
+    assert all(f"すべて {keep}" in c.reason for c in folders.values() if c.path != lone_28)
+    assert f"すべて {blobs[0] / '28'}" in folders[lone_28].reason
+    assert sum(c.size for c in folders.values()) == 2 * 4 * 4096 + 2 * 4096
+    assert [c for c in cands if c.category != "duplicate_folder"] == []
+
+
+def test_include_apps_reports_but_never_auto_quarantines(env):
+    home = env.paths.home
+    write(home / "ACE-Step" / ".git" / "HEAD", b"ref")
+    repo_model = write(home / "ACE-Step" / "models" / "model.bin", blob(130))
+    write(home / "pinokio" / "app.exe", b"MZ")
+    app_model = write(home / "pinokio" / "cache" / "model.bin", blob(130))
+    desk = write(home / "Desktop" / "model.bin", blob(130))
+    write(home / "Documents" / "a.bin", blob(131))
+    plain = write(home / "Desktop" / "a.bin", blob(131))
+
+    assert [c.path for c in collect(env)[0]] == [plain]  # 既定では中を調べない
+
+    cands, skipped = collect(env, scan_app_folders=True)
+    result = {c.path: c.approval for c in cands}
+    assert result[plain] is False
+    # model.bin の 3 つのうち 2 つが候補になり、どれも承認待ち
+    model_cands = {p for p in result if p.name == "model.bin"}
+    assert len(model_cands) == 2 and model_cands <= {repo_model, app_model, desk}
+    assert all(result[p] is True for p in model_cands)
+    assert all("自動では隔離しません" in c.reason for c in cands if c.path in model_cands)
+    assert skipped == []
+
+
+def test_cli_include_apps_flag(env, capsys):
+    write(env.paths.home / "tool" / "x.dll", b"MZ")
+    write(env.paths.home / "tool" / "big.bin", blob(140))
+    write(env.paths.home / "Desktop" / "big.bin", blob(140))
+    env.cfg = config.load(env.paths)
+    cli.main(["scan", "--only", "F2", "--include-apps"], paths=env.paths, engine=env.engine())
+    assert "[承認待ち] 重複ファイル (同一ドライブ内): 1 件" in capsys.readouterr().out
+
+
+def test_dot_folders_are_app_data(env):
+    home = env.paths.home
+    internal = home / ".lmstudio" / ".internal" / "bundled-models" / "m.gguf"
+    bundled = home / ".lmstudio" / "apps" / "bionic" / ".internal" / "bundled-models" / "m.gguf"
+    write(internal, blob(150))
+    write(bundled, blob(150))
+    assert collect(env)[0] == []  # 既定では中を調べない
+    cands, _ = collect(env, scan_app_folders=True)
+    assert len(cands) == 1 and cands[0].approval
+    assert "アプリのデータフォルダ (.lmstudio)" in cands[0].reason
+
+
+def test_installer_exe_does_not_make_app_folder(env):
+    folder = env.paths.home / "Desktop" / "desktop"
+    write(folder / "Docker Desktop Installer (1).exe", b"MZ")
+    write(folder / "setup_x64.exe", b"MZ")
+    write(env.paths.home / "Videos" / "rec.mp4", blob(160))
+    dup = write(folder / "movie.mp4", blob(160))
+    cands, _ = collect(env)
+    assert [(c.path, c.approval) for c in cands] == [(dup, False)]
+
+
+@pytest.mark.parametrize("name,expected", [
+    ("Docker Desktop Installer (1).exe", False),
+    ("setup.exe", False),
+    ("airset2_setup.exe", False),
+    ("uninstall.exe", True),
+    ("unins000.exe", True),
+    ("pinokio.exe", True),
+    ("Content Manager.update.exe", True),
+    ("setup.dll", True),
+    ("node-v24.12.0-x64.msi", False),
+])
+def test_is_app_file(name, expected):
+    assert dedupe.is_app_file(name) is expected
+
+
+def test_keep_newest(env):
+    home = env.paths.home
+    old_doc = write(home / "Documents" / "a.bin", blob(170), age_days=30)
+    new_desk = write(home / "Desktop" / "a.bin", blob(170), age_days=5)
+    assert [c.path for c in collect(env)[0]] == [new_desk]  # 既定はドキュメント優先
+    assert [c.path for c in collect(env, keep="newest")[0]] == [old_doc]
+
+
+def test_approve_all_quarantines_folders_and_cross_drive_but_not_apps(env):
+    home = env.paths.home
+    for name, seed in (("1.jpg", 180), ("2.jpg", 181)):
+        write(home / "Pictures" / "trip" / name, blob(seed), age_days=30)
+        write(home / "Desktop" / "trip copy" / name, blob(seed), age_days=5)
+    write(home / "Music" / "song.wav", blob(182))
+    backup = write(env.d.root / "song.wav", blob(182))
+    for name, seed in (("x.dll", 183), ("y.dll", 184)):
+        write(home / "sd" / ".git" / "HEAD", b"ref: sd")
+        write(home / "sd" / "venv" / "lib" / name, blob(seed))
+        write(home / "ace" / ".git" / "HEAD", b"ref: ace")
+        write(home / "ace" / "venv" / "lib" / name, blob(seed))
+
+    cands, _ = collect(env, approve_all=True, keep="newest", scan_app_folders=True)
+    result = {c.path: c.approval for c in cands}
+    # 新しいほう (Desktop) を残し、古いほう (Pictures) のフォルダを隔離する
+    assert result[home / "Pictures" / "trip"] is False
+    songs = [p for p in result if p.name == "song.wav"]
+    assert len(songs) == 1 and songs[0] in (backup, home / "Music" / "song.wav") and result[songs[0]] is False
+    venv = [p for p in result if "venv" in p.parts]
+    assert len(venv) == 1 and result[venv[0]] is True  # アプリの中は常に承認待ち
+
+
+def test_cli_approve_all_run_and_restore(enabled_env, capsys):
+    env = enabled_env
+    home = env.paths.home
+    for name, seed in (("1.jpg", 190), ("2.jpg", 191)):
+        write(home / "Pictures" / "trip" / name, blob(seed), age_days=30)
+        write(home / "Desktop" / "trip copy" / name, blob(seed), age_days=5)
+    old = home / "Pictures" / "trip"
+    env.cfg = config.load(env.paths)
+    env.cfg["enabled"] = True
+    code = cli.main(["run", "--only", "F2", "--keep", "newest", "--approve-all"],
+                    paths=env.paths, engine=env.engine())
+    out = capsys.readouterr().out
+    assert code == 0 and "[隔離] 重複フォルダ: 1 件" in out
+    assert not old.exists() and (home / "Desktop" / "trip copy" / "1.jpg").exists()
+    ref = next(r for r in env.engine().items() if r.item.category == "duplicate_folder")
+    env.engine().restore([ref])
+    assert (old / "2.jpg").read_bytes() == blob(191)
+
+
+def test_folder_inside_kept_folder_is_never_removed(env):
+    # 実際に起きた例: blobs が 3 か所、その中の 28 だけが lyrics-server にもある。
+    # 新しいほうを残す指定で、残した blobs の中の 28 まで隔離されていた
+    home = env.paths.home
+    main = env.c.root / "ChordMini" / "cache" / "blobs"
+    newest = home / "Desktop" / "ChordLyrics" / "cache" / "blobs"
+    backup = home / "Desktop" / "backup" / "cache" / "blobs"
+    lone_28 = home / "Desktop" / "lyrics-server" / "models" / "blobs" / "28"
+    for i, (root, age) in enumerate(((main, 30), (newest, 2), (backup, 40))):
+        write(root.parent / "own.json", blob(200 + i), age_days=age)
+        for name, seed in (("a", 210), ("b", 211), ("28/x", 212), ("28/y", 213)):
+            write(root / name, blob(seed), age_days=age)
+    for name, seed in (("x", 212), ("y", 213)):
+        write(lone_28 / name, blob(seed), age_days=1.5)  # いちばん新しい
+    write(lone_28.parent / "own.json", blob(220))
+
+    cands, _ = collect(env, keep="newest", approve_all=True)
+    removed = {c.path for c in cands}
+    assert newest not in removed
+    assert not any(is_under_path(p, newest) for p in removed)
+    assert removed == {main, backup, lone_28}
+    assert all(not c.approval for c in cands)
+
+
+def is_under_path(path, root):
+    return path == root or root in path.parents
+
+
+def test_daw_project_audio_is_not_auto_quarantined(env):
+    project = env.c.root / "Cakewalk Projects" / "song"
+    write(project / "song.cwp", b"cwp")
+    write(project / "Audio" / "take.wav", blob(230))
+    write(project / "Audio" / "Vocal (bounced).wav", blob(230))
+    assert collect(env, approve_all=True)[0] == []
+    cands, _ = collect(env, approve_all=True, scan_app_folders=True)
+    assert len(cands) == 1 and cands[0].approval
+    assert "制作プロジェクトのフォルダ (song.cwp)" in cands[0].reason
+
+
+def test_library_folders_are_not_auto_quarantined(env):
+    home = env.paths.home
+    for project in ("win11-stickies", "smart-sticky-notes"):
+        write(home / project / "package.json", project.encode())
+        for name, seed in (("a.bin", 240), ("darwin/b.bin", 241)):
+            write(home / project / "node_modules" / "app-builder-bin" / name, blob(seed))
+    assert collect(env, approve_all=True)[0] == []
+    cands, _ = collect(env, approve_all=True, scan_app_folders=True)
+    assert [c.approval for c in cands] == [True]
+    assert "ライブラリのフォルダ (node_modules)" in cands[0].reason
+
+
+def test_folder_with_app_files_stays_approval(env):
+    home = env.paths.home
+    for where in ("ToolsA", "ToolsB"):
+        write(home / where / "own.txt", where.encode())
+        write(home / where / "pkg" / "readme.bin", blob(250))
+        write(home / where / "pkg" / "win" / "tool.exe", blob(251))
+    cands, _ = collect(env, approve_all=True, scan_app_folders=True)
+    assert [c.approval for c in cands] == [True]

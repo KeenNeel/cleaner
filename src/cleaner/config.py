@@ -42,6 +42,20 @@ DEFAULTS: dict[str, Any] = {
         "dev_cache_roots": ["~"],
         "immediate": [],  # 即時削除するカテゴリ (IMMEDIATE_ALLOWED のみ有効)
     },
+    "dedupe": {
+        "min_size_kb": 1,  # これより小さいファイルは重複を探さない
+        "cross_drive": "report",
+        # Git リポジトリ・アプリのフォルダの中も調べる (見つかった重複は承認待ちにするだけで、自動では隔離しない)
+        "scan_app_folders": False,
+        # 残す 1 つの選び方: priority (keep_priority の順) / newest (更新日時が新しいものを残す)
+        "keep": "priority",
+        # 承認待ちになるもの (ドライブまたぎ・フォルダ丸ごとの重複) も隔離する。
+        # Git リポジトリ・アプリのフォルダが絡むものは、これを有効にしても隔離しない
+        "approve_all": False,  # ドライブをまたぐ重複: report (承認待ち) / quarantine (自動隔離)
+        # 重複のうち残す 1 つを選ぶ優先順 ("*" はそれ以外のすべての場所)
+        "keep_priority": ["~\\Documents", "~\\Pictures", "~\\Videos", "~\\Music", "*",
+                          "~\\Desktop", "~\\Downloads"],
+    },
 }
 
 
@@ -84,6 +98,13 @@ def validate(cfg: dict[str, Any]) -> None:
         raise ConfigError("min_quarantine_days は quarantine_days 以下にしてください")
     if not 0 <= cfg["min_free_percent"] < 100:
         raise ConfigError("min_free_percent は 0〜99 で指定してください")
+    dedupe = cfg["dedupe"]
+    if not isinstance(dedupe["min_size_kb"], int) or dedupe["min_size_kb"] < 1:
+        raise ConfigError("dedupe.min_size_kb は 1 以上の整数で指定してください")
+    if dedupe["keep"] not in ("priority", "newest"):
+        raise ConfigError("dedupe.keep は priority か newest で指定してください")
+    if dedupe["cross_drive"] not in ("report", "quarantine"):
+        raise ConfigError("dedupe.cross_drive は report か quarantine で指定してください")
     unknown = set(cfg["cleanup"]["immediate"]) - IMMEDIATE_ALLOWED
     if unknown:
         raise ConfigError(f"即時削除できないカテゴリが指定されています: {', '.join(sorted(unknown))}")

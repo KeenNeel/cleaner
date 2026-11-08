@@ -52,6 +52,10 @@ class AppPaths:
         return self.data_dir / "runs"
 
     @property
+    def hashcache_file(self) -> Path:
+        return self.data_dir / "hashcache.db"
+
+    @property
     def lock_file(self) -> Path:
         return self.data_dir / "cleaner.lock"
 
